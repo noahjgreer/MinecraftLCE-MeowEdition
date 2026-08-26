@@ -37,10 +37,14 @@ run by an agent, so almost every entry should say so explicitly.
 ### Systems
 - [Windows x64 build on modern MSVC (v143)](systems/windows-x64-modern-msvc-build.md) — how the x64 target builds under VS2022, the four files that needed fixing, and the prebuilt VS2012 middleware that fights the modern CRT.
 - [Keyboard and mouse input (Windows x64)](systems/windows-keyboard-mouse-input.md) — how kb/m reaches a joypad-only game via a subclass of the prebuilt input manager, the control map, and why the button glyphs are still controller art.
+- [Texture pipeline and the `.pck` format](systems/texture-pipeline-and-pck-format.md) — where textures actually live (not in Iggy), the dead runtime stitcher vs. 4J's hardcoded UV table, and the byte layout of the DLC archives.
+- [Audio on Windows x64 (Miles)](systems/windows-x64-audio.md) — the Miles init chain, the CWD-relative soundbank/redist/music paths, and the required runtime file layout.
 
 ### Changes
 - [2026-08-26 — Retarget Windows x64 to MSVC v143 and get it linking](changes/2026-08-26-retarget-x64-to-v143.md) — first build of `Minecraft.Client.exe` without VS2012; includes an unresolved vendored-binary question.
 - [2026-08-26 — Keyboard and mouse input for the Windows x64 build](changes/2026-08-26-windows-keyboard-mouse-input.md) — the Windows port never had any; also fixes the never-generated platform UI skin.
+- [2026-08-26 — Windows x64 build had no audio at all](changes/2026-08-26-windows-x64-silent-audio.md) — a missing soundbank tore down the whole Miles driver; staging fix, no source change.
+- [2026-08-26 — Atlas slicer and `.pck` extractor](changes/2026-08-26-atlas-slicer-and-pck-extractor.md) — two new tools in `tools/`; slices the atlases into 462 per-icon PNGs with a byte-exact re-stitch check. No C++ changed.
 
 ## Ground rules
 
