@@ -10,6 +10,8 @@ using namespace std;
 #include "..\..\Common\Network\Sony\PlatformNetworkManagerSony.h"
 #elif defined _DURANGO
 #include "..\..\Durango\Network\PlatformNetworkManagerDurango.h"
+#elif defined _WINDOWS64
+#include "Sockets\PlatformNetworkManagerSockets.h"
 #else
 #include "PlatformNetworkManagerStub.h"
 #endif
@@ -35,6 +37,8 @@ class CGameNetworkManager
 	friend class CPlatformNetworkManagerSony;
 #elif defined _DURANGO
 	friend class CPlatformNetworkManagerDurango;
+#elif defined _WINDOWS64
+	friend class CPlatformNetworkManagerSockets;
 #else
 	friend class CPlatformNetworkManagerStub;
 #endif
@@ -54,6 +58,13 @@ public:
 	void			DoWork();
 	bool			_RunNetworkGame(LPVOID lpParameter);
 	bool			StartNetworkGame(Minecraft *minecraft, LPVOID lpParameter);
+	// 4J Meow - Start only the server thread, with no host player and no client
+	// connection of our own. This is the host branch of StartNetworkGame minus
+	// everything that exists to put the hosting machine's own player into the
+	// world. See docs/systems/dedicated-server.md.
+	// NOTE: this region is public - do not add access specifiers around it, the
+	// whole class body below depends on staying public.
+	bool			StartDedicatedServer(LPVOID lpParameter);
 	int				CorrectErrorIDS(int IDS);
 
 	// Player management

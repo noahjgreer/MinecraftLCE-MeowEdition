@@ -25,10 +25,12 @@ namespace
 	// docs/systems/windows-keyboard-mouse-input.md.
 	// ---------------------------------------------------------------------
 
-	// Mouse pixels per frame that count as full stick deflection.
-	const float MOUSE_LOOK_RANGE		= 24.0f;
-
-	// Multiplies raw mouse movement before the range above is applied.
+	// Mouse look no longer passes through a stick axis - see
+	// Minecraft.cpp / Win64ApplyMouseLook and
+	// docs/systems/windows-mouse-look.md. Raw pixel deltas are drained once a
+	// frame by ConsumeLookDelta and turned into a rotation directly, the way
+	// Java Edition's MouseHandler does it. This multiplier is a straight scale
+	// on top of the in-game sensitivity setting; 1.0 matches Java.
 	const float MOUSE_SENSITIVITY		= 1.0f;
 
 	// Flip either of these if look or movement comes out inverted.
@@ -69,10 +71,16 @@ namespace
 	bool	s_keyLastTick[KEY_STATE_COUNT];	// snapshot for the previous tick
 	int		s_keyHeldTicks[KEY_STATE_COUNT];// consecutive ticks held, for repeat
 
-	float	s_mouseAccumX	= 0.0f;			// raw delta since last tick
+	// Raw mouse pixels since the last frame drained them. Deliberately NOT
+	// per-tick: the turn is applied once per rendered frame so that mouse look
+	// is as smooth as the framerate, rather than being quantised to 20Hz.
+	float	s_mouseAccumX	= 0.0f;
 	float	s_mouseAccumY	= 0.0f;
-	float	s_lookX			= 0.0f;			// resolved stick value this tick
-	float	s_lookY			= 0.0f;
+
+	// Mirrors what the game tells the library via SetMenuDisplayed, so mouse
+	// look can be suppressed in exactly the cases where the right stick would
+	// have been zeroed by bCheckMenuDisplay.
+	bool	s_menuDisplayed[XUSER_MAX_COUNT] = { false };
 
 	int		s_wheelUpTicks		= 0;
 	int		s_wheelDownTicks	= 0;
@@ -261,6 +269,18 @@ namespace
 }
 
 // ---------------------------------------------------------------------------
+// Typed-text queue (see Win64Input::OnChar)
+// ---------------------------------------------------------------------------
+
+#define TYPED_CHAR_QUEUE_SIZE 64
+
+static wchar_t			s_typedChars[TYPED_CHAR_QUEUE_SIZE];
+static int				s_typedRead		= 0;
+static int				s_typedWrite	= 0;
+static CRITICAL_SECTION	s_typedLock;
+
+
+// ---------------------------------------------------------------------------
 // Window-procedure entry points
 // ---------------------------------------------------------------------------
 
@@ -269,6 +289,9 @@ namespace Win64Input
 	void Initialise(HWND hWnd)
 	{
 		s_hWnd = hWnd;
+
+		InitializeCriticalSection(&s_typedLock);
+		s_typedRead = s_typedWrite = 0;
 
 		for (int i = 0; i < KEY_STATE_COUNT; i++)
 		{
@@ -307,6 +330,45 @@ namespace Win64Input
 	{
 		if (iVirtualKey < 0 || iVirtualKey >= VKEY_COUNT) return;
 		s_keyDown[iVirtualKey] = false;
+	}
+
+	// A tiny ring of typed characters. WM_CHAR arrives on the thread pumping the
+	// message loop and is drained on the game thread, so both ends take the lock.
+	void OnChar(wchar_t ch)
+	{
+		EnterCriticalSection(&s_typedLock);
+		int iNext = (s_typedWrite + 1) % TYPED_CHAR_QUEUE_SIZE;
+		if (iNext != s_typedRead)
+		{
+			s_typedChars[s_typedWrite] = ch;
+			s_typedWrite = iNext;
+		}
+		LeaveCriticalSection(&s_typedLock);
+
+		MarkInUse();
+	}
+
+	bool ConsumeTypedChar(wchar_t &ch)
+	{
+		bool bGot = false;
+
+		EnterCriticalSection(&s_typedLock);
+		if (s_typedRead != s_typedWrite)
+		{
+			ch = s_typedChars[s_typedRead];
+			s_typedRead = (s_typedRead + 1) % TYPED_CHAR_QUEUE_SIZE;
+			bGot = true;
+		}
+		LeaveCriticalSection(&s_typedLock);
+
+		return bGot;
+	}
+
+	void ClearTypedChars()
+	{
+		EnterCriticalSection(&s_typedLock);
+		s_typedRead = s_typedWrite = 0;
+		LeaveCriticalSection(&s_typedLock);
 	}
 
 	void OnMouseButton(int iButton, bool bDown)
@@ -357,6 +419,20 @@ namespace Win64Input
 		ApplyCapture();
 	}
 
+	bool ConsumeLookDelta(float &fDX, float &fDY)
+	{
+		fDX = s_mouseAccumX * MOUSE_SENSITIVITY * LOOK_X_SIGN;
+		fDY = s_mouseAccumY * MOUSE_SENSITIVITY * LOOK_Y_SIGN;
+		s_mouseAccumX = s_mouseAccumY = 0.0f;
+		return (fDX != 0.0f || fDY != 0.0f);
+	}
+
+	bool IsMenuDisplayed(int iPad)
+	{
+		if (iPad < 0 || iPad >= XUSER_MAX_COUNT) return false;
+		return s_menuDisplayed[iPad];
+	}
+
 	bool InUse()				{ return s_inUse; }
 	bool IsCaptured()			{ return s_captured; }
 	bool WantsHiddenCursor()	{ return s_captured && s_hasFocus; }
@@ -393,14 +469,8 @@ void C_Win64Input::Tick(void)
 		else					s_keyHeldTicks[i] = 0;
 	}
 
-	// Convert accumulated raw mouse motion into a stick deflection.
-	s_lookX = (s_mouseAccumX * MOUSE_SENSITIVITY) / MOUSE_LOOK_RANGE;
-	s_lookY = (s_mouseAccumY * MOUSE_SENSITIVITY) / MOUSE_LOOK_RANGE;
-	if (s_lookX >  1.0f) s_lookX =  1.0f;
-	if (s_lookX < -1.0f) s_lookX = -1.0f;
-	if (s_lookY >  1.0f) s_lookY =  1.0f;
-	if (s_lookY < -1.0f) s_lookY = -1.0f;
-	s_mouseAccumX = s_mouseAccumY = 0.0f;
+	// Note: mouse motion is NOT consumed here. It is drained once per frame by
+	// Win64Input::ConsumeLookDelta - see Win64ApplyMouseLook in Minecraft.cpp.
 
 	if (s_wheelUpTicks   > 0) s_wheelUpTicks--;
 	if (s_wheelDownTicks > 0) s_wheelDownTicks--;
@@ -535,21 +605,27 @@ float C_Win64Input::GetJoypadStick_LY(int iPad, bool bCheckMenuDisplay)
 	return fVal * MOVE_Y_SIGN;
 }
 
-float C_Win64Input::GetJoypadStick_RX(int iPad, bool bCheckMenuDisplay)
+// GetJoypadStick_RX / _RY are deliberately NOT shadowed any more.
+//
+// Feeding a mouse delta into a stick axis meant the game's controller path
+// (Input::tick -> interpolateTurn, with its quadratic response curve and a
+// fixed turn speed) drove mouse look, which is exactly what made it feel wrong:
+// a stick is a rate and a mouse delta is a displacement, so turn amount
+// depended on framerate and on how the curve happened to bucket the delta.
+// The right stick is now pad-only and mouse look bypasses it entirely.
+
+void C_Win64Input::SetMenuDisplayed(int iPad, bool bVal)
 {
-	float fPad = C_4JInput::GetJoypadStick_RX(iPad, bCheckMenuDisplay);
-	if (iPad != 0 || !s_inUse || fPad != 0.0f) return fPad;
+	C_4JInput::SetMenuDisplayed(iPad, bVal);
 
-	return s_lookX * LOOK_X_SIGN;
-}
-
-float C_Win64Input::GetJoypadStick_RY(int iPad, bool bCheckMenuDisplay)
-{
-	float fPad = C_4JInput::GetJoypadStick_RY(iPad, bCheckMenuDisplay);
-	if (iPad != 0 || !s_inUse || fPad != 0.0f) return fPad;
-
-	// Screen Y grows downward, stick Y grows up.
-	return -s_lookY * LOOK_Y_SIGN;
+	if (iPad == XUSER_INDEX_ANY)
+	{
+		for (int i = 0; i < XUSER_MAX_COUNT; i++) s_menuDisplayed[i] = bVal;
+	}
+	else if (iPad >= 0 && iPad < XUSER_MAX_COUNT)
+	{
+		s_menuDisplayed[iPad] = bVal;
+	}
 }
 
 bool C_Win64Input::IsPadConnected(int iPad)

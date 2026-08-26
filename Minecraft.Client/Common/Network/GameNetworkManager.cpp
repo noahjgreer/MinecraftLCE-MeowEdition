@@ -71,6 +71,9 @@ void CGameNetworkManager::Initialise()
 	s_pPlatformNetworkManager = new CPlatformNetworkManagerSony();
 #elif defined _DURANGO
 	s_pPlatformNetworkManager = new CPlatformNetworkManagerDurango();
+#elif defined _WINDOWS64
+	// The stub is written against IQNet, which is an empty class shell on x64.
+	s_pPlatformNetworkManager = new CPlatformNetworkManagerSockets();
 #else
 	s_pPlatformNetworkManager = new CPlatformNetworkManagerStub();
 #endif
@@ -180,6 +183,61 @@ bool CGameNetworkManager::_RunNetworkGame(LPVOID lpParameter)
 	//app.CloseXuiScenes(ProfileManager.GetPrimaryPad());
 
 	return success;
+}
+
+// 4J Meow - Dedicated server startup.
+//
+// This is deliberately NOT StartNetworkGame. That function does two jobs braided
+// together: it starts the server thread, and it puts the hosting machine's own
+// player into the resulting world (ClientConnection, PreLoginPacket, ticking it to
+// completion behind a progress screen, texture pack and skin reloads). A dedicated
+// server wants only the first job.
+//
+// The server itself is entirely self-contained on its own thread - see
+// ServerThreadProc, which sets up its thread-local pools and calls
+// MinecraftServer::main. It listens, accepts, and saves without any local player
+// existing, so none is created here and no player slot is wasted on the host.
+//
+// See docs/systems/dedicated-server.md.
+bool CGameNetworkManager::StartDedicatedServer(LPVOID lpParameter)
+{
+	__int64 seed = 0;
+	if( lpParameter != NULL )
+	{
+		NetworkGameInitData *param = (NetworkGameInitData *)lpParameter;
+		seed = param->seed;
+
+		app.setLevelGenerationOptions(param->levelGen);
+		if( param->levelGen != NULL && app.getLevelGenerationOptions() != NULL )
+		{
+			param->seed = seed = app.getLevelGenerationOptions()->getLevelSeed();
+		}
+	}
+
+	ServerStoppedCreate(true);
+	ServerReadyCreate(true);
+
+	C4JThread *thread = new C4JThread(&CGameNetworkManager::ServerThreadProc, lpParameter, "Server", 256 * 1024);
+	thread->SetProcessor(CPU_CORE_SERVER);
+	thread->Run();
+
+	// ServerThreadProc signals this once the level is up and the server is ticking.
+	ServerReadyWait();
+	ServerReadyDestroy();
+
+	if( MinecraftServer::serverHalted() )
+	{
+		app.DebugPrintf("Dedicated: server halted during startup\n");
+		return false;
+	}
+
+	// Nothing else calls this for us - normally it happens as part of the host's
+	// own join - and the platform manager needs it to leave the lobby state.
+	s_pPlatformNetworkManager->_StartGame();
+
+	app.SetGameStarted(true);
+
+	return true;
 }
 
 bool	CGameNetworkManager::StartNetworkGame(Minecraft *minecraft, LPVOID lpParameter)

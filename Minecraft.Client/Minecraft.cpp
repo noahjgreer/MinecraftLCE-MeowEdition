@@ -27,6 +27,10 @@
 #include "DeathScreen.h"
 #include "ErrorScreen.h"
 #include "TitleScreen.h"
+#include "ConnectScreen.h"
+#ifdef _WINDOWS64
+#include "Windows64/Win64DedicatedServer.h"
+#endif
 #include "InventoryScreen.h"
 #include "InBedChatScreen.h"
 #include "AchievementPopup.h"
@@ -408,7 +412,12 @@ void Minecraft::init()
 
 	if (connectToIp != L"")	// 4J - was NULL comparison
 	{
-		//        setScreen(new ConnectScreen(this, connectToIp, connectToPort));		// 4J TODO - put back in
+#ifdef _WINDOWS64
+		// 4J Meow - put back in for direct connect (-server on the command line).
+		// 4J had commented this out because the consoles joined through a QNET
+		// or SQR session rather than by address.
+		setScreen(new ConnectScreen(this, connectToIp, connectToPort));
+#endif
 	}
 	else
 	{
@@ -1223,6 +1232,94 @@ void Minecraft::createPrimaryLocalPlayer(int iPad)
 	}
 }
 
+#if defined(_WINDOWS64)
+
+#include "Windows64/Win64KeyboardMouse.h"
+#include "Windows64/Win64CommandLine.h"
+
+// 4J Meow - Java-Edition-style mouse look for the Windows x64 build.
+//
+// The first pass at keyboard/mouse fed the mouse delta into the right stick
+// axis, which meant it went through the controller path in Input::tick:
+//
+//     player->interpolateTurn(tx * abs(tx) * turnSpeed, ...)
+//
+// That is a rate control with a quadratic response curve, evaluated once per
+// 20Hz game tick. It is the right thing for a stick and the wrong thing for a
+// mouse - a mouse delta is a displacement, so squaring it, multiplying by a
+// turn speed and quantising it to the tick rate all made it feel off, and made
+// the turn amount depend on the framerate.
+//
+// This is the Java Edition model instead (MouseHandler.turnPlayer): drain the
+// accumulated pixels once per rendered frame, apply the cubic sensitivity
+// curve, and hand the result straight to Entity::turn, which also advances
+// xRotO / yRotO so the change is not smeared across the render interpolation.
+// Note that no smoothing is applied - that is Java's smoothCamera option,
+// which LCE has no equivalent setting for.
+//
+// Java's Entity.turn takes screen-space Y (down positive); LCE's takes the
+// stick convention (up positive) and subtracts, so the Y delta is negated on
+// the way in.
+static void Win64ApplyMouseLook(Minecraft *pMinecraft)
+{
+	// Player 1 only, matching the rest of the keyboard/mouse support.
+	const int iPad = 0;
+
+	if (!Win64Input::InUse() || !Win64Input::IsCaptured()) return;
+
+	float fDX = 0.0f;
+	float fDY = 0.0f;
+	if (!Win64Input::ConsumeLookDelta(fDX, fDY)) return;
+
+	if (pMinecraft->level == NULL) return;
+	if (pMinecraft->screen != NULL) return;
+	if (pMinecraft->pause) return;
+	if (Win64Input::IsMenuDisplayed(iPad)) return;
+
+	shared_ptr<MultiplayerLocalPlayer> pPlayer = pMinecraft->localplayers[iPad];
+	if (pPlayer == NULL) return;
+
+	MultiPlayerGameMode *pGameMode = pMinecraft->localgameModes[iPad];
+	if (pGameMode == NULL) return;
+
+	if (!pGameMode->isInputAllowed(MINECRAFT_ACTION_LOOK_LEFT) && !pGameMode->isInputAllowed(MINECRAFT_ACTION_LOOK_RIGHT))
+		fDX = 0.0f;
+	if (!pGameMode->isInputAllowed(MINECRAFT_ACTION_LOOK_UP) && !pGameMode->isInputAllowed(MINECRAFT_ACTION_LOOK_DOWN))
+		fDY = 0.0f;
+
+#ifndef _CONTENT_PACKAGE
+	if (app.GetFreezePlayers()) return;
+#endif
+
+	if (fDX == 0.0f && fDY == 0.0f) return;
+
+	// Java: ss = sensitivity * 0.6 + 0.2; sens = ss * ss * ss * 8.
+	// The in-game setting is 0..100 here where Java's is 0..1, so it is scaled
+	// first. At the middle setting this comes out at 1.0, i.e. Entity::turn's
+	// own 0.15 factor gives 0.15 degrees per mouse pixel - the same as Java.
+	float fSetting	= ((float)app.GetGameSettings(iPad, eGameSetting_Sensitivity_InGame)) / 100.0f;
+	float fSS		= fSetting * 0.6f + 0.2f;
+	float fSens		= fSS * fSS * fSS * 8.0f;
+
+	float fXo = fDX * fSens;
+	float fYo = -(fDY * fSens);	// screen Y is down, Entity::turn wants up
+
+	// 4J: WESTY : Invert look Y if required. Same setting the pad path uses.
+	if (app.GetGameSettings(iPad, eGameSetting_ControlInvertLook))
+	{
+		fYo = -fYo;
+	}
+
+	pPlayer->turn(fXo, fYo);
+
+	// The stick used to be what told the idle timer someone was still there.
+	// Mouse look no longer goes through it, so say so explicitly - otherwise
+	// looking around without touching a key drops into the idle animation.
+	pPlayer->ResetInactiveTicks();
+}
+
+#endif // _WINDOWS64
+
 void Minecraft::run_middle()
 {
 	static __int64 lastTime = 0;
@@ -1703,6 +1800,14 @@ void Minecraft::run_middle()
 			{
 				timer->advanceTime();
 			}
+
+#if defined(_WINDOWS64)
+			// Mouse look is applied per rendered frame, not per game tick -
+			// see Win64ApplyMouseLook above. This sits after advanceTime and
+			// before the tick loop, which is where Java's
+			// MouseHandler::handleAccumulatedMovement runs.
+			Win64ApplyMouseLook(this);
+#endif
 
 			//__int64 beforeTickTime = System::nanoTime();
 			for (int i = 0; i < timer->ticks; i++)
@@ -4309,6 +4414,21 @@ void Minecraft::startAndConnectTo(const wstring& name, const wstring& sid, const
 			minecraft->user = new User(L"Player" + _toString<int>(System::currentTimeMillis() % 1000), L"");
 		}
 	}
+
+#ifdef _WINDOWS64
+	// 4J Meow - direct connect from the command line. The display name is the
+	// identity on that transport, so -name has to land before the login packet
+	// is built. See docs/systems/dedicated-server-and-direct-connect.md.
+	if (Win64CommandLine::GetPlayerName()[0] != 0)
+	{
+		minecraft->user->name = Win64CommandLine::GetPlayerName();
+	}
+
+	if (Win64CommandLine::WantsDirectConnect())
+	{
+		minecraft->connectTo(Win64CommandLine::GetServerAddress(), Win64CommandLine::GetServerPort());
+	}
+#endif
 	//else
 	//{
 	//	minecraft->user = new DemoUser();

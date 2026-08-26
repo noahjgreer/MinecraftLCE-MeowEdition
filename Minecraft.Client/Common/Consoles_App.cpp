@@ -1,5 +1,8 @@
 ﻿
 #include "stdafx.h"
+#ifdef _WINDOWS64
+#include "..\Windows64\Win64DedicatedServer.h"
+#endif
 
 #include "..\..\Minecraft.World\Recipy.h"
 #include "..\..\Minecraft.Client\Options.h"
@@ -241,6 +244,13 @@ void CMinecraftApp::DebugPrintf(const char *szFormat, ...)
 	vsnprintf(buf, sizeof(buf), szFormat, ap);
 	va_end(ap);
 	OutputDebugStringA(buf);
+#ifdef _WINDOWS64
+	// 4J Meow - a dedicated server has no debugger attached, so mirror the
+	// existing tracing to the console. This is where the server's own logging
+	// (level load, settings, player joins) comes from - it was always being
+	// written, just to OutputDebugString where nobody could see it.
+	if (Win64DedicatedServer::IsEnabled()) Win64DedicatedServer::LogRaw(buf);
+#endif
 #endif
 
 }

@@ -6,6 +6,12 @@
 #include "..\..\MinecraftServer.h"
 #include "UI.h"
 #include "UIScene_MainMenu.h"
+#ifdef _WINDOWS64
+#include "..\..\Windows64\Win64TextPrompt.h"
+#include "..\Network\Sockets\PlatformNetworkManagerSockets.h"
+#include "..\Network\GameNetworkManager.h"
+#include "..\..\Minecraft.h"
+#endif
 #ifdef __ORBIS__
 #include <error_dialog.h>
 #endif
@@ -38,7 +44,16 @@ UIScene_MainMenu::UIScene_MainMenu(int iPad, void *initData, UILayer *parentLaye
 	app.SetReachedMainMenu();
 #endif
 
+#ifdef _WINDOWS64
+	// 4J Meow - The Leaderboards slot is repurposed as "Join Server" on this
+	// platform. The label comes from a string resource rather than the Iggy
+	// asset, so it can simply be replaced; the button's Flash element is still
+	// "Button2". A seventh button would need the .gfx re-authored, which we
+	// cannot do from source. See docs/systems/dedicated-server-and-direct-connect.md.
+	m_buttons[(int)eControl_Leaderboards].init(L"Join Server",eControl_Leaderboards);
+#else
 	m_buttons[(int)eControl_Leaderboards].init(app.GetString(IDS_LEADERBOARDS),eControl_Leaderboards);
+#endif
 	m_buttons[(int)eControl_Achievements].init(app.GetString(IDS_ACHIEVEMENTS),eControl_Achievements);
 	m_buttons[(int)eControl_HelpAndOptions].init(app.GetString(IDS_HELP_AND_OPTIONS),eControl_HelpAndOptions);
 	if(ProfileManager.IsFullVersion())
@@ -306,7 +321,13 @@ void UIScene_MainMenu::handlePress(F64 controlId, F64 childId)
 	case eControl_Leaderboards:
 		//CD - Added for audio
 		ui.PlayUISFX(eSFX_Press);
-#ifdef __ORBIS__
+#ifdef _WINDOWS64
+		// 4J Meow - no sign-in to gate this on, so run it straight away. Note
+		// that leaving signInReturnedFunc NULL means the code below never calls
+		// RunAction, despite what its comment says.
+		m_eAction=eAction_RunJoinServer;
+		RunAction(primaryPad);
+#elif defined __ORBIS__
 		ProfileManager.RefreshChatAndContentRestrictions(RefreshChatAndContentRestrictionsReturned_Leaderboards, this);
 #else
 		m_eAction=eAction_RunLeaderboards;
@@ -403,6 +424,11 @@ void UIScene_MainMenu::RunAction(int iPad)
 	case eAction_RunLeaderboards:
 		RunLeaderboards(iPad);
 		break;
+#ifdef _WINDOWS64
+	case eAction_RunJoinServer:
+		RunJoinServer(iPad);
+		break;
+#endif
 	case eAction_RunAchievements:
 		RunAchievements(iPad);
 		break;
@@ -1470,6 +1496,91 @@ void UIScene_MainMenu::RunPlayGame(int iPad)
 		}
 	}
 }
+
+#ifdef _WINDOWS64
+// 4J Meow - "Join Server". Prompts for an address and a display name, opens the
+// TCP link, then hands over to the game's own network-game startup so the join
+// runs through exactly the same path a console session join does.
+//
+// The address and name are remembered for the session so re-joining is two
+// confirmations rather than two lots of typing.
+void UIScene_MainMenu::RunJoinServer(int iPad)
+{
+	static wchar_t s_szAddress[256]	= L"127.0.0.1";
+	static wchar_t s_szName[64]		= L"";
+
+	if( s_szName[0] == 0 )
+	{
+		Minecraft *pMinecraft = Minecraft::GetInstance();
+		if( pMinecraft != NULL && pMinecraft->user != NULL )
+		{
+			wcsncpy_s(s_szName, 64, pMinecraft->user->name.c_str(), _TRUNCATE);
+		}
+	}
+
+	if( !Win64TextPrompt::Ask(L"Join Server", L"Server address (host or host:port):", s_szAddress, 256) ) return;
+	if( !Win64TextPrompt::Ask(L"Join Server", L"Your name:", s_szName, 64) ) return;
+
+	if( s_szAddress[0] == 0 || s_szName[0] == 0 ) return;
+
+	// Split an optional ":port" off the address.
+	int port = MINECRAFT_DEFAULT_SERVER_PORT;
+	wchar_t *pchColon = wcschr(s_szAddress, L':');
+	wchar_t szHost[256];
+	wcsncpy_s(szHost, 256, s_szAddress, _TRUNCATE);
+	pchColon = wcschr(szHost, L':');
+	if( pchColon != NULL )
+	{
+		*pchColon = 0;
+		int iParsed = _wtoi(pchColon + 1);
+		if( iParsed > 0 && iParsed <= 65535 ) port = iParsed;
+	}
+
+	// The name is the identity on this transport - see NetworkPlayerSockets.
+	Minecraft *pMinecraft = Minecraft::GetInstance();
+	if( pMinecraft != NULL && pMinecraft->user != NULL )
+	{
+		pMinecraft->user->name = s_szName;
+	}
+
+	if( g_pPlatformNetworkManagerSockets == NULL ) return;
+	g_pPlatformNetworkManagerSockets->SetLocalDisplayName(s_szName);
+
+	// getaddrinfo wants narrow; addresses and hostnames are ASCII.
+	char szNarrowHost[256];
+	size_t converted = 0;
+	if( wcstombs_s(&converted, szNarrowHost, 256, szHost, _TRUNCATE) != 0 ) return;
+
+	if( !g_pPlatformNetworkManagerSockets->ConnectToServer(szNarrowHost, port) )
+	{
+		// Native, to match the prompt - the Iggy message box would be the
+		// house style, but this path has no localised string for it and a
+		// failed connect has to say something.
+		wchar_t szMessage[320];
+		swprintf(szMessage, 320, L"Could not reach %ls on port %d.", szHost, port);
+		MessageBoxW(GetActiveWindow(), szMessage, L"Join Server", MB_OK | MB_ICONWARNING);
+		return;
+	}
+
+	// From here it is the stock join sequence: StartNetworkGame sees IsHost()
+	// false, picks up the local player's socket, builds the ClientConnection and
+	// ticks it to completion behind the fullscreen progress scene.
+	ui.PlayUISFX(eSFX_Press);
+
+	LoadingInputParams *loadingParams = new LoadingInputParams();
+	loadingParams->func = &CGameNetworkManager::RunNetworkGameThreadProc;
+	loadingParams->lpParam = NULL;
+
+	UIFullscreenProgressCompletionData *completionData = new UIFullscreenProgressCompletionData();
+	completionData->bShowBackground = TRUE;
+	completionData->bShowLogo = TRUE;
+	completionData->type = e_ProgressCompletion_CloseAllPlayersUIScenes;
+	completionData->iPad = DEFAULT_XUI_MENU_USER;
+	loadingParams->completionData = completionData;
+
+	ui.NavigateToScene(ProfileManager.GetPrimaryPad(), eUIScene_FullscreenProgress, loadingParams);
+}
+#endif // _WINDOWS64
 
 void UIScene_MainMenu::RunLeaderboards(int iPad)
 {

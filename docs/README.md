@@ -38,9 +38,14 @@ run by an agent, so almost every entry should say so explicitly.
 - [Windows x64 build on modern MSVC (v143)](systems/windows-x64-modern-msvc-build.md) — how the x64 target builds under VS2022, the four files that needed fixing, and the prebuilt VS2012 middleware that fights the modern CRT.
 - [Keyboard and mouse input (Windows x64)](systems/windows-keyboard-mouse-input.md) — how kb/m reaches a joypad-only game via a subclass of the prebuilt input manager, the control map, and why the button glyphs are still controller art.
 - [Texture pipeline and the `.pck` format](systems/texture-pipeline-and-pck-format.md) — where textures actually live (not in Iggy), the dead runtime stitcher vs. 4J's hardcoded UV table, and the byte layout of the DLC archives.
+- [Dedicated server (Windows x64)](systems/dedicated-server.md) — why the server needs no local player, the client dependencies that survive, and the async save-storage problem that is the remaining work.
+- [Dedicated server & direct connect (design)](systems/dedicated-server-and-direct-connect.md) — the two-function transport seam under `Socket`, why the packet layer is already TCP-ready, and the staged plan for an IP/port "Join Server" flow.
 - [Audio on Windows x64 (Miles)](systems/windows-x64-audio.md) — the Miles init chain, the CWD-relative soundbank/redist/music paths, and the required runtime file layout.
 
 ### Changes
+- [Dedicated server mode](changes/2026-08-26-dedicated-server.md) — `-dedicated` runs a hidden-window, console-logging, world-saving server; why it needed no local player and no save-slot machinery.
+- [Direct connect over TCP (stages 1-3)](changes/2026-08-26-direct-connect-stage1.md) — hosting on a port, joining by address, name-based identity, the F6 "Join a Server" screen and `-server`/`-name` on the command line.
+- [TCP transport for Windows x64 (stage 1)](changes/2026-08-26-tcp-transport-stage1.md) — the Winsock `TcpLink`/`TcpListener` that fills the two-function transport seam under `Socket`; compiles, not yet wired to anything.
 - [2026-08-26 — Retarget Windows x64 to MSVC v143 and get it linking](changes/2026-08-26-retarget-x64-to-v143.md) — first build of `Minecraft.Client.exe` without VS2012; includes an unresolved vendored-binary question.
 - [2026-08-26 — Keyboard and mouse input for the Windows x64 build](changes/2026-08-26-windows-keyboard-mouse-input.md) — the Windows port never had any; also fixes the never-generated platform UI skin.
 - [2026-08-26 — Windows x64 build had no audio at all](changes/2026-08-26-windows-x64-silent-audio.md) — a missing soundbank tore down the whole Miles driver; staging fix, no source change.
@@ -48,6 +53,7 @@ run by an agent, so almost every entry should say so explicitly.
 - [2026-08-26 — Atlas slicer and `.pck` extractor](changes/2026-08-26-atlas-slicer-and-pck-extractor.md) — two new tools in `tools/`; slices the atlases into 462 per-icon PNGs with a byte-exact re-stitch check. No C++ changed.
 - [2026-08-26 — Jump/place fixed (`GetValue`), and the cursor pinned to the window](changes/2026-08-26-win64-getvalue-and-cursor-pinning.md) — a fourth, unshadowed input query is why space, right-click and the scroll wheel did nothing.
 - [2026-08-26 — No depth buffer on Windows x64: an uninitialised DSV descriptor](changes/2026-08-26-win64-depth-buffer-uninitialised-dsv.md) — `Flags` was never assigned, so depth writes were dropped or the view failed to create; also clears the atlas slicer of blame.
+- [2026-08-26 — Java-Edition-style mouse look (Windows x64)](changes/2026-08-26-java-style-mouse-look.md) — mouse look was being driven through the controller stick path; it now turns the player directly, once per frame.
 
 ## Ground rules
 

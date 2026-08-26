@@ -77,7 +77,8 @@ WndProc (Windows64_Minecraft.cpp)
 Win64Input::On*()            - live state in s_keyDown[]
         │
         ▼
-C_Win64Input::Tick()         - latches per-tick snapshot, resolves mouse delta
+C_Win64Input::Tick()         - latches per-tick keyboard snapshot
+        │                      (mouse deltas are NOT consumed here)
         │
         ▼
 ButtonPressed / ButtonDown / ButtonReleased / GetJoypadStick_*
@@ -99,6 +100,8 @@ Notable design points:
   every query within a tick agrees with every other.
 - **Raw mouse input** (`WM_INPUT`) is used rather than `WM_MOUSEMOVE` plus
   cursor warping, so there is no self-inflicted delta to filter out.
+- **Mouse motion is drained per frame, not per tick.** `Tick()` latches keys but
+  deliberately leaves `s_mouseAccumX/Y` alone; the frame-rate turn owns them.
 - **Focus loss clears all keys.** Otherwise a held W would walk forever while
   the game sat in the background.
 
@@ -135,13 +138,17 @@ rebinding is a data change.
   `LOOK_Y_SIGN`, `MOVE_X_SIGN`, `MOVE_Y_SIGN`) were chosen by reasoning about
   the conventions, not by observing them. If look or movement is inverted, flip
   the relevant constant — that is the intended fix and why they are named
-  constants rather than inline signs.
-- **Mouse look is fed through a stick axis**, because that is the only look
-  input the game has. A mouse delta is a displacement and a stick is a rate, so
-  turn speed is somewhat framerate-dependent and will feel less crisp than
-  native mouse look. Tune with `MOUSE_LOOK_RANGE` / `MOUSE_SENSITIVITY`. Doing
-  it properly means injecting into the camera below the input layer, which is a
-  much deeper change.
+  constants rather than inline signs. For pitch specifically, note that
+  `Win64ApplyMouseLook` in `Minecraft.cpp` *also* negates Y, to convert
+  screen-space (down positive) to LCE's `Entity::turn` convention (up positive);
+  that negation is the one to flip if mouse pitch is inverted.
+- **Mouse look no longer goes through a stick axis.** It originally did, and it
+  felt wrong for exactly the reason you would expect: a stick is a rate control
+  and a mouse delta is a displacement. It is now a direct per-frame
+  `Entity::turn`, modelled on Java Edition's `MouseHandler` — see
+  `docs/changes/2026-08-26-java-style-mouse-look.md`. `GetJoypadStick_RX/_RY`
+  are pad-only; the mouse path is `Win64Input::ConsumeLookDelta` ->
+  `Win64ApplyMouseLook` (`Minecraft.cpp`).
 - **On-screen prompts still show controller glyphs.** See below — that part is
   blocked, not forgotten.
 - `MINECRAFT_ACTION_LEFT_SCROLL` / `RIGHT_SCROLL` are handled outside the

@@ -2,6 +2,7 @@
 #include "ConnectScreen.h"
 #include "ClientConnection.h"
 #include "TitleScreen.h"
+#include "DisconnectedScreen.h"
 #include "Button.h"
 #include "Minecraft.h"
 #include "User.h"
@@ -17,6 +18,19 @@ ConnectScreen::ConnectScreen(Minecraft *minecraft, const wstring& ip, int port)
 	// 4J - removed from separate thread, but need to investigate what we actually need here
     connection = new ClientConnection(minecraft, ip, port);
     if (aborted) return;
+
+	// 4J Meow - A direct connect can simply fail (host down, wrong port, refused),
+	// which the console session-based paths never had to express. ClientConnection
+	// reports that as createdOk == false and leaves its inner Connection NULL, so
+	// sending here without checking is a null dereference.
+	if (!connection->createdOk)
+	{
+		delete connection;
+		connection = NULL;
+		minecraft->setScreen(new DisconnectedScreen(L"connect.failed", L"Could not reach that server.", NULL));
+		return;
+	}
+
     connection->send( shared_ptr<PreLoginPacket>( new PreLoginPacket(minecraft->user->name) ) );
 #else
 
@@ -70,7 +84,13 @@ void ConnectScreen::buttonClicked(Button *button)
 	{
         aborted = true;
         if (connection != NULL) connection->close();
+#ifdef _WINDOWS64
+		// TitleScreen::render is entirely #if 0'd on this build (Iggy owns the
+		// menu), so returning to it would leave a blank screen.
+		minecraft->setScreen(NULL);
+#else
         minecraft->setScreen(new TitleScreen());
+#endif
     }
 }
 

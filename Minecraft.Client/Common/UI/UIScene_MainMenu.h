@@ -80,6 +80,11 @@ private:
 		eAction_RunAchievements,
 		eAction_RunHelpAndOptions,
 		eAction_RunUnlockOrDLC,
+#ifdef _WINDOWS64
+		// 4J Meow - replaces Leaderboards on this platform, which has no
+		// platform leaderboard service behind it anyway.
+		eAction_RunJoinServer,
+#endif
 #if defined(__PS3__)|| defined(__PSVITA__) || defined(__ORBIS__)
 		eAction_RunLeaderboardsPSN,
 		eAction_RunGamePSN,
@@ -128,6 +133,10 @@ protected:
 private:
 	void RunPlayGame(int iPad);
 	void RunLeaderboards(int iPad);
+#ifdef _WINDOWS64
+	// 4J Meow - "Join Server": prompts for an address and a name, then joins.
+	void RunJoinServer(int iPad);
+#endif
 	void RunUnlockOrDLC(int iPad);
 	void RunAchievements(int iPad);
 	void RunHelpAndOptions(int iPad);

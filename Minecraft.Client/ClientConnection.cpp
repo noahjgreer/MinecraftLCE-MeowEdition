@@ -51,6 +51,10 @@
 #include "PS3/Network/SonyVoiceChat.h"
 #endif
 #include "DLCTexturePack.h"
+#ifdef _WINDOWS64
+#include "Common\Network\Sockets\NetworkPlayerSockets.h"
+#include "Common\Network\Sockets\PlatformNetworkManagerSockets.h"
+#endif
 
 #ifdef _DURANGO
 #include "..\Minecraft.World\DurangoStats.h"
@@ -59,36 +63,56 @@
 
 ClientConnection::ClientConnection(Minecraft *minecraft, const wstring& ip, int port)
 {
-	// 4J Stu - No longer used as we use the socket version below.
-	assert(FALSE);
-#if 0
-	// 4J - added initiliasers
+	// 4J-Meow - Refilled for Windows x64 direct connect. 4J gutted this (assert(FALSE)
+	// + #if 0) because the consoles joined through QNET/SQR sessions rather than by
+	// address. See docs/systems/dedicated-server-and-direct-connect.md.
 	random = new Random();
 	done = false;
-    level = false;
-    started = false;
+	level = NULL;
+	started = false;
+	savedDataStorage = new SavedDataStorage(NULL);
+	maxPlayers = 20;
+	connection = NULL;
+	createdOk = false;
 
-    this->minecraft = minecraft;
+	this->minecraft = minecraft;
+	m_userIndex = ProfileManager.GetPrimaryPad();
 
-	Socket *socket;
-	if( gNetworkManager.IsHost() )
+#ifdef _WINDOWS64
+	if( g_pPlatformNetworkManagerSockets == NULL )
 	{
-	    socket = new Socket();	// 4J - Local connection
+		app.DebugPrintf("ClientConnection: no sockets network manager to connect with\n");
+		return;
 	}
-	else
+
+	// The name the player typed is what identifies them to the server.
+	g_pPlatformNetworkManagerSockets->SetLocalDisplayName(minecraft->user->name);
+
+	// wstring -> narrow for getaddrinfo. Addresses and hostnames are ASCII.
+	string narrowIp;
+	narrowIp.reserve(ip.length());
+	for( unsigned int i = 0; i < ip.length(); i++ )
 	{
-		socket = new Socket(ip);	// 4J - Connection over xrnm - hardcoded IP at present
+		narrowIp += (char)ip[i];
 	}
-	createdOk = socket->createdOk;
-	if( createdOk )
+
+	if( !g_pPlatformNetworkManagerSockets->ConnectToServer(narrowIp.c_str(), port) )
 	{
-	    connection = new Connection(socket, L"Client", this);
+		app.DebugPrintf("ClientConnection: could not reach %s:%d\n", narrowIp.c_str(), port);
+		return;
 	}
-	else
+
+	Socket *socket = g_pPlatformNetworkManagerSockets->GetLocalPlayerSocket();
+	if( socket == NULL || !socket->createdOk )
 	{
-		connection = NULL;
-		delete socket;
+		app.DebugPrintf("ClientConnection: connected but no usable socket\n");
+		return;
 	}
+
+	createdOk = true;
+	connection = new Connection(socket, L"Client", this);
+#else
+	assert(FALSE);
 #endif
 }
 
@@ -140,6 +164,10 @@ ClientConnection::~ClientConnection()
 
 void ClientConnection::tick()
 {
+	// 4J Meow - connection is NULL when the socket could not be created, which a
+	// direct connect can genuinely hit.
+	if (connection == NULL) return;
+
     if (!done) connection->tick();
     connection->flush();
 }
@@ -2026,6 +2054,15 @@ void ClientConnection::handlePreLogin(shared_ptr<PreLoginPacket> packet)
 		// need to use the XUID here
  		PlayerUID offlineXUID = INVALID_XUID;
 		PlayerUID onlineXUID = INVALID_XUID;
+#ifdef _WINDOWS64
+		// 4J-Meow - There is no platform account behind a direct-connect game, so
+		// identity is the display name the player chose. Deriving the UID from it
+		// keeps every XUID-keyed path (bans, getPlayerForLogin, GetPlayerByXuid)
+		// working unmodified. See docs/systems/dedicated-server-and-direct-connect.md
+		// - this is trust-on-assertion, anyone can claim any name.
+		offlineXUID = NetworkPlayerSockets::MakeUIDFromName(minecraft->user->name);
+		onlineXUID = offlineXUID;
+#else
 		if( ProfileManager.IsSignedInLive(m_userIndex) )
 		{
 			// Guest don't have an offline XUID as they cannot play offline, so use their online one
@@ -2047,6 +2084,7 @@ void ClientConnection::handlePreLogin(shared_ptr<PreLoginPacket> packet)
 			// All other players we use their offline XUID so that they can play the game offline
  			ProfileManager.GetXUID(m_userIndex,&offlineXUID,false);
 		}
+#endif // _WINDOWS64
 		BOOL allAllowed, friendsAllowed;
 		ProfileManager.AllowedPlayerCreatedContent(m_userIndex,true,&allAllowed,&friendsAllowed);
 		send( shared_ptr<LoginPacket>( new LoginPacket(minecraft->user->name, SharedConstants::NETWORK_PROTOCOL_VERSION, offlineXUID, onlineXUID, (allAllowed!=TRUE && friendsAllowed==TRUE), 

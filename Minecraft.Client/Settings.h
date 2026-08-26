@@ -8,7 +8,7 @@ class Settings
 //    private Properties properties = new Properties();
 private:
 	unordered_map<wstring,wstring> properties;	// 4J - TODO was Properties type, will need to implement something we can serialise/deserialise too
-	//File *file;
+	wstring m_filename;		// 4J Meow - kept so saveProperties can write back
 
 public:
 	Settings(File *file);

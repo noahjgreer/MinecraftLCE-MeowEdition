@@ -43,9 +43,29 @@ namespace Win64Input
 	// the main window exists.
 	void Initialise(HWND hWnd);
 
+	// Drains the raw mouse pixels accumulated since the last call and applies
+	// the sensitivity/sign tunables. Screen convention: +X right, +Y down.
+	// Called once per rendered frame by Win64ApplyMouseLook (Minecraft.cpp) -
+	// mouse look does not go through the right stick. Returns false if there
+	// was no movement.
+	bool ConsumeLookDelta(float &fDX, float &fDY);
+
+	// Whether the game currently has a menu up for this pad, mirrored from
+	// C_Win64Input::SetMenuDisplayed. Mouse look honours this so it is
+	// suppressed in exactly the cases the right stick would have been.
+	bool IsMenuDisplayed(int iPad);
+
 	// True once the player has actually used the keyboard or mouse. Until then
 	// we stay out of the way entirely and the pad behaves as it always did.
 	bool InUse();
+
+	// Typed text, fed from WM_CHAR. This is a separate path from OnKeyDown on
+	// purpose: WM_CHAR is what applies the keyboard layout, shift state and dead
+	// keys, and it delivers backspace, tab, return and escape as characters too,
+	// so a text field needs nothing else. Drained by DirectConnectScreen.
+	void OnChar(wchar_t ch);
+	bool ConsumeTypedChar(wchar_t &ch);
+	void ClearTypedChars();
 
 	// Cursor capture for mouse-look.
 	void SetCaptured(bool bCapture);
@@ -74,8 +94,13 @@ public:
 
 	float	GetJoypadStick_LX(int iPad, bool bCheckMenuDisplay = true);
 	float	GetJoypadStick_LY(int iPad, bool bCheckMenuDisplay = true);
-	float	GetJoypadStick_RX(int iPad, bool bCheckMenuDisplay = true);
-	float	GetJoypadStick_RY(int iPad, bool bCheckMenuDisplay = true);
+	// GetJoypadStick_RX / _RY are NOT shadowed: mouse look bypasses the stick
+	// and the controller interpolation behind it. See Win64ApplyMouseLook in
+	// Minecraft.cpp and docs/systems/windows-mouse-look.md.
+
+	// Shadowed only to mirror the menu-displayed flag, which the library
+	// otherwise keeps to itself and which mouse look needs to see.
+	void	SetMenuDisplayed(int iPad, bool bVal);
 
 	// So the game does not sit on "please connect a controller" when the player
 	// only has a keyboard.

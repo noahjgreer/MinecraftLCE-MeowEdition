@@ -204,6 +204,7 @@ bool MinecraftServer::initServer(__int64 seed, NetworkGameInitData *initData, DW
         __int64 levelNanoTime = System::nanoTime();
 
         wstring levelName = settings->getString(L"level-name", L"world");
+		app.DebugPrintf("Server: level name is \"%ls\"\n", levelName.c_str());
 		wstring levelTypeString;
 
 		bool gameRuleUseFlatWorld = false;
@@ -226,8 +227,11 @@ bool MinecraftServer::initServer(__int64 seed, NetworkGameInitData *initData, DW
 			pLevelType = LevelType::lvl_normal;
 		}
 
+		app.DebugPrintf("Server: level type is \"%ls\"\n", levelTypeString.c_str());
+
 		ProgressRenderer *mcprogress = Minecraft::GetInstance()->progressRenderer;
 		mcprogress->progressStart(IDS_PROGRESS_INITIALISING_SERVER);
+		app.DebugPrintf("Server: progress renderer started\n");
 
 		if( findSeed )
 		{
@@ -255,7 +259,9 @@ bool MinecraftServer::initServer(__int64 seed, NetworkGameInitData *initData, DW
         }
 #endif
 //        logger.info("Preparing level \"" + levelName + "\"");
+		app.DebugPrintf("Server: preparing level \"%ls\" (seed %lld)\n", levelName.c_str(), seed);
         m_bLoaded = loadLevel(new McRegionLevelStorageSource(File(L".")), levelName, seed, pLevelType, initData);
+		app.DebugPrintf("Server: loadLevel returned %s\n", m_bLoaded ? "true" : "false");
 //        logger.info("Done (" + (System.nanoTime() - levelNanoTime) + "ns)! For help, type \"help\" or \"?\"");
 
 		// 4J delete passed in save data now - this is only required for the tutorial which is loaded by passing data directly in rather than using the storage manager
@@ -384,6 +390,8 @@ bool MinecraftServer::loadLevel(LevelStorageSource *storageSource, const wstring
 //    }
 	ProgressRenderer *mcprogress = Minecraft::GetInstance()->progressRenderer;
 
+	app.DebugPrintf("Server: loadLevel entered\n");
+
 	// 4J TODO - free levels here if there are already some?
     levels = ServerLevelArray(3);
 
@@ -393,6 +401,8 @@ bool MinecraftServer::loadLevel(LevelStorageSource *storageSource, const wstring
 
 	LevelSettings *levelSettings = new LevelSettings(levelSeed, gameType, app.GetGameHostOption(eGameHostOption_Structures)>0?true:false, isHardcore(), true, pLevelType, initData->xzSize, initData->hellScale);
 	if( app.GetGameHostOption(eGameHostOption_BonusChest ) ) levelSettings->enableStartingBonusItems();
+
+	app.DebugPrintf("Server: level settings built, creating storage\n");
 
 	// 4J - temp - load existing level
 	shared_ptr<McRegionLevelStorage> storage = nullptr;
@@ -446,12 +456,16 @@ bool MinecraftServer::loadLevel(LevelStorageSource *storageSource, const wstring
 
 //	McRegionLevelStorage *storage = new McRegionLevelStorage(new ConsoleSaveFile( L"" ), L"", L"", 0); // original
 //    McRegionLevelStorage *storage = new McRegionLevelStorage(File(L"."), name, true); // TODO 
+	app.DebugPrintf("Server: storage created, building %d level(s)\n", levels.length);
+
     for (unsigned int i = 0; i < levels.length; i++)
 	{
 		if( s_bServerHalted || !g_NetworkManager.IsInSession() )
 		{
+				app.DebugPrintf("Server: aborting level build (halted=%d inSession=%d)\n", s_bServerHalted ? 1 : 0, g_NetworkManager.IsInSession() ? 1 : 0);
 				return false;
 		}
+		app.DebugPrintf("Server: building level %d\n", i);
 
 //            String levelName = name;
 //            if (i == 1) levelName += "_nether";

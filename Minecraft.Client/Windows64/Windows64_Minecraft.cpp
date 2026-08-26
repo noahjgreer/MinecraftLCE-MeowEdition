@@ -3,6 +3,8 @@
 
 #include "stdafx.h"
 #include "Win64KeyboardMouse.h"
+#include "Win64CommandLine.h"
+#include "Win64DedicatedServer.h"
 
 #include <assert.h>
 #include "GameConfig\Minecraft.spa.h"
@@ -347,6 +349,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_KEYUP:
 	case WM_SYSKEYUP:
 		Win64Input::OnKeyUp((int)wParam);
+		break;
+	case WM_CHAR:
+		// Text entry (the direct-connect screen). WM_CHAR is what applies the
+		// keyboard layout and shift state; WM_KEYDOWN alone cannot type.
+		Win64Input::OnChar((wchar_t)wParam);
 		break;
 	case WM_LBUTTONDOWN:	Win64Input::OnMouseButton(0, true);	break;
 	case WM_LBUTTONUP:		Win64Input::OnMouseButton(0, false);	break;
@@ -739,6 +746,19 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	// Miles driver down. This matters most for builds handed to other people.
 	setWorkingDirectoryToExe();
 
+	// 4J Meow - -server / -port / -name. Parsed before the digit check below so
+	// the pre-existing resolution argument keeps working unchanged.
+	Win64CommandLine::Parse(lpCmdLine);
+
+	// 4J Meow - dedicated server: console up before anything logs, and no game
+	// window. D3D still initialises against the hidden window, which costs
+	// nothing - with no local player GameRenderer::render never runs anyway.
+	if (Win64DedicatedServer::IsEnabled())
+	{
+		Win64DedicatedServer::Initialise();
+		nCmdShow = SW_HIDE;
+	}
+
 	if(lpCmdLine)
 	{
 		if(lpCmdLine[0] == '1')
@@ -1096,8 +1116,19 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 		PIXEndNamedEvent();
 
 		PIXBeginNamedEvent(0,"Network manager do work #1");
-		//		g_NetworkManager.DoWork();
+		// 4J Meow - This was commented out, and the only other call to it lives
+		// inside an "#if 0" further down, so DoWork() was never running on this
+		// platform at all. It is what services the platform network manager each
+		// frame - for the sockets transport that is the accept loop, so without it
+		// a host listens but can never take a connection.
+		g_NetworkManager.DoWork();
 		PIXEndNamedEvent();
+
+		// 4J Meow - dedicated server housekeeping. Deliberately outside the
+		// app.GetGameStarted() gate below: run_middle() is not called until the
+		// game has started, and on a dedicated server nothing starts it until this
+		// has run.
+		Win64DedicatedServer::Tick();
 
 		//		LeaderboardManager::Instance()->Tick();
 		// Render game graphics.
@@ -1250,6 +1281,7 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 		PIXBeginNamedEvent(0,"Network manager do work #2");
 		g_NetworkManager.DoWork();
 		PIXEndNamedEvent();
+
 
 		PIXBeginNamedEvent(0,"Misc extra xui");
 		// Update XUI Timers

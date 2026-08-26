@@ -5195,6 +5195,9 @@ xcopy /q /y /i /s /e $(ProjectDir)Durango\CU  $(LayoutDir)Image\Loose\CU</Comman
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage_Vita|Durango'">true</ExcludedFromBuild>
     </ClInclude>
     <ClInclude Include="Common\Network\SessionInfo.h" />
+    <ClInclude Include="Common\Network\Sockets\TcpLink.h" />
+    <ClInclude Include="Common\Network\Sockets\NetworkPlayerSockets.h" />
+    <ClInclude Include="Common\Network\Sockets\PlatformNetworkManagerSockets.h" />
     <ClInclude Include="Common\Network\Sony\NetworkPlayerSony.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Durango'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -22357,7 +22360,17 @@ xcopy /q /y /i /s /e $(ProjectDir)Durango\CU  $(LayoutDir)Image\Loose\CU</Comman
     <ClCompile Include="Common\GameRules\XboxStructureActionPlaceSpawner.cpp" />
     <ClCompile Include="Common\Leaderboards\LeaderboardManager.cpp" />
     <ClCompile Include="Common\Network\GameNetworkManager.cpp" />
+    <ClCompile Include="Common\Network\Sockets\TcpLink.cpp" />
+    <ClCompile Include="Common\Network\Sockets\NetworkPlayerSockets.cpp" />
+    <ClCompile Include="Common\Network\Sockets\PlatformNetworkManagerSockets.cpp" />
     <ClCompile Include="Common\Network\PlatformNetworkManagerStub.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='CONTENTPACKAGE_SYMBOLS|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage_NO_TU|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage_Vita|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseForArt|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage_NO_TU|Xbox 360'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage|Xbox 360'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='CONTENTPACKAGE_SYMBOLS|Xbox 360'">true</ExcludedFromBuild>
@@ -25200,10 +25213,7 @@ xcopy /q /y /i /s /e $(ProjectDir)Durango\CU  $(LayoutDir)Image\Loose\CU</Comman
     <ClCompile Include="CompassTexture.cpp" />
     <ClCompile Include="ConfirmScreen.cpp" />
     <ClCompile Include="ConnectScreen.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Durango'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage_Vita|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Durango'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage_Vita|Durango'">true</ExcludedFromBuild>
     </ClCompile>
@@ -25265,10 +25275,7 @@ xcopy /q /y /i /s /e $(ProjectDir)Durango\CU  $(LayoutDir)Image\Loose\CU</Comman
     <ClCompile Include="DerivedServerLevel.cpp" />
     <ClCompile Include="DirtyChunkSorter.cpp" />
     <ClCompile Include="DisconnectedScreen.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Durango'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage_Vita|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Durango'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage_Vita|Durango'">true</ExcludedFromBuild>
     </ClCompile>
@@ -29853,6 +29860,9 @@ xcopy /q /y /i /s /e $(ProjectDir)Durango\CU  $(LayoutDir)Image\Loose\CU</Comman
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|ORBIS'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage_Vita|ORBIS'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="Windows64\Win64CommandLine.cpp" />
+    <ClCompile Include="Windows64\Win64TextPrompt.cpp" />
+    <ClCompile Include="Windows64\Win64DedicatedServer.cpp" />
     <ClCompile Include="Windows64\Win64CrtCompat.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage|Durango'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='CONTENTPACKAGE_SYMBOLS|Durango'">true</ExcludedFromBuild>
