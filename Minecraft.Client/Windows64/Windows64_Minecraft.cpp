@@ -373,6 +373,26 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			}
 		}
 		return DefWindowProc(hWnd, message, wParam, lParam);
+	// The cursor clip is in screen coordinates and Windows silently drops it on
+	// activation, display and DPI changes, so it has to be re-established
+	// whenever the window's position on screen may have changed. Without this
+	// the cursor escapes the window during mouse-look and the next click goes
+	// to whatever it is sitting over - possibly on another monitor.
+	case WM_MOVE:
+	case WM_SIZE:
+	case WM_EXITSIZEMOVE:
+	case WM_DISPLAYCHANGE:
+		Win64Input::OnWindowMoved();
+		return DefWindowProc(hWnd, message, wParam, lParam);
+	case WM_SETCURSOR:
+		// Report the cursor as handled so the window class cursor is not put
+		// back over the hidden one on every mouse move.
+		if (LOWORD(lParam) == HTCLIENT && Win64Input::WantsHiddenCursor())
+		{
+			SetCursor(NULL);
+			return TRUE;
+		}
+		return DefWindowProc(hWnd, message, wParam, lParam);
 	case WM_SETFOCUS:
 		Win64Input::OnFocusChanged(true);
 		break;
@@ -574,7 +594,28 @@ app.DebugPrintf("width: %d, height: %d\n", width, height);
 		return hr;
 
 	// Create a depth stencil buffer
+	//
+	// 4J Meow - both descriptors below are now zeroed before use, and both
+	// creates are error-checked.
+	//
+	// descDSView was declared uninitialised and then had Format, ViewDimension
+	// and Texture2D.MipSlice assigned - but *not* Flags, which is a real member
+	// of D3D11_DEPTH_STENCIL_VIEW_DESC. It was therefore whatever happened to be
+	// on the stack, and the two values that matter are both catastrophic:
+	//
+	//   - garbage with D3D11_DSV_READ_ONLY_DEPTH (0x1) set produces a valid but
+	//     read-only view, so depth *testing* still happens while depth *writes*
+	//     are silently discarded, and
+	//   - garbage with any undefined bit set makes CreateDepthStencilView fail
+	//     outright with E_INVALIDARG.
+	//
+	// The second case was unchecked, so g_pDepthStencilView stayed NULL, got
+	// bound as NULL by the OMSetRenderTargets below, and the game rendered with
+	// no depth buffer at all. Either way the result on screen is the same:
+	// nothing occludes anything, so whatever is submitted last wins and distant
+	// or underground geometry paints over the surface in front of it.
 	D3D11_TEXTURE2D_DESC descDepth;
+	ZeroMemory( &descDepth, sizeof( descDepth ) );
 
 	descDepth.Width = width;
 	descDepth.Height = height;
@@ -588,13 +629,19 @@ app.DebugPrintf("width: %d, height: %d\n", width, height);
 	descDepth.CPUAccessFlags = 0;
 	descDepth.MiscFlags = 0;
 	hr = g_pd3dDevice->CreateTexture2D(&descDepth, NULL, &g_pDepthStencilBuffer);
+	if( FAILED( hr ) )
+		return hr;
 
 	D3D11_DEPTH_STENCIL_VIEW_DESC descDSView;
+	ZeroMemory( &descDSView, sizeof( descDSView ) );
 	descDSView.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	descDSView.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
 	descDSView.Texture2D.MipSlice = 0;
+	descDSView.Flags = 0;	// read/write depth - must NOT be D3D11_DSV_READ_ONLY_DEPTH
 
 	hr = g_pd3dDevice->CreateDepthStencilView(g_pDepthStencilBuffer, &descDSView, &g_pDepthStencilView);
+	if( FAILED( hr ) )
+		return hr;
 
 	hr = g_pd3dDevice->CreateRenderTargetView( pBackBuffer, NULL, &g_pRenderTargetView );
 	pBackBuffer->Release();
@@ -638,12 +685,38 @@ void CleanupDevice()
 	if( g_pImmediateContext ) g_pImmediateContext->ClearState();
 
 	if( g_pRenderTargetView ) g_pRenderTargetView->Release();
+	if( g_pDepthStencilView ) g_pDepthStencilView->Release();
+	if( g_pDepthStencilBuffer ) g_pDepthStencilBuffer->Release();
 	if( g_pSwapChain ) g_pSwapChain->Release();
 	if( g_pImmediateContext ) g_pImmediateContext->Release();
 	if( g_pd3dDevice ) g_pd3dDevice->Release();
 }
 
 
+
+// 4J Meow - see the call in _tWinMain below.
+static void setWorkingDirectoryToExe()
+{
+	TCHAR szExePath[MAX_PATH];
+	DWORD dwLen = GetModuleFileName(NULL, szExePath, MAX_PATH);
+
+	// GetModuleFileName truncates rather than failing when the buffer is too
+	// small, so treat a full buffer as a failure and leave the cwd alone.
+	if (dwLen == 0 || dwLen >= MAX_PATH)
+	{
+		return;
+	}
+
+	for (TCHAR *pchEnd = szExePath + dwLen; pchEnd != szExePath; pchEnd--)
+	{
+		if (*pchEnd == TEXT('\\') || *pchEnd == TEXT('/'))
+		{
+			*pchEnd = 0;
+			SetCurrentDirectory(szExePath);
+			return;
+		}
+	}
+}
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 					   _In_opt_ HINSTANCE hPrevInstance,
@@ -652,6 +725,19 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 {
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
+
+	// 4J Meow - Pin the working directory to the folder holding the .exe.
+	//
+	// Every asset path on this platform is resolved against the working
+	// directory, not the module: SoundEngine uses "Durango\Sound\",
+	// "redist64" and "music\", and the texture packs and UI media are looked
+	// up the same way. Launching from Explorer happens to set the working
+	// directory correctly, but a desktop shortcut with a different "Start in",
+	// a .bat launcher, or a debugger with a stale working directory all break
+	// assets silently - most visibly as a game with no audio at all, because a
+	// soundbank that cannot be found makes SoundEngine::init() tear the whole
+	// Miles driver down. This matters most for builds handed to other people.
+	setWorkingDirectoryToExe();
 
 	if(lpCmdLine)
 	{

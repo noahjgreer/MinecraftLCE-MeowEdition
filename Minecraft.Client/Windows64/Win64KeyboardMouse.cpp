@@ -40,6 +40,16 @@ namespace
 	// How long a mouse wheel notch reads as a held "scroll" action, in ticks.
 	const int	WHEEL_HOLD_TICKS		= 2;
 
+	// Auto-repeat for GetValue(..., bRepeat = true), in ticks: how long a key
+	// must be held before it starts repeating, and how often it repeats after
+	// that. Mirrors what C_4JInput::SetKeyRepeatRate does for the pad.
+	const int	REPEAT_DELAY_TICKS		= 14;
+	const int	REPEAT_RATE_TICKS		= 4;
+
+	// What GetValue reports for an active action. Pad triggers report 0..255,
+	// and every caller only tests > 0, so a full-scale value is the safe answer.
+	const unsigned int ACTION_VALUE_ON	= 255;
+
 	const int	VKEY_COUNT				= 256;
 	const int	MOUSE_BUTTON_COUNT		= 3;
 
@@ -57,6 +67,7 @@ namespace
 	bool	s_keyDown[KEY_STATE_COUNT];		// live state, written by WndProc
 	bool	s_keyThisTick[KEY_STATE_COUNT];	// snapshot for the current tick
 	bool	s_keyLastTick[KEY_STATE_COUNT];	// snapshot for the previous tick
+	int		s_keyHeldTicks[KEY_STATE_COUNT];// consecutive ticks held, for repeat
 
 	float	s_mouseAccumX	= 0.0f;			// raw delta since last tick
 	float	s_mouseAccumY	= 0.0f;
@@ -89,6 +100,20 @@ namespace
 	bool KeyWentUp(int vk)
 	{
 		return (vk >= 0 && vk < KEY_STATE_COUNT) ? (!s_keyThisTick[vk] && s_keyLastTick[vk]) : false;
+	}
+
+	// True on the tick the key goes down, and then again on each repeat tick
+	// once it has been held past the delay.
+	bool KeyRepeated(int vk)
+	{
+		if (vk < 0 || vk >= KEY_STATE_COUNT) return false;
+
+		const int iHeld = s_keyHeldTicks[vk];
+		if (iHeld <= 0)					return false;
+		if (iHeld == 1)					return true;	// initial press
+		if (iHeld <= REPEAT_DELAY_TICKS)	return false;
+
+		return ((iHeld - REPEAT_DELAY_TICKS) % REPEAT_RATE_TICKS) == 0;
 	}
 
 	// ---------------------------------------------------------------------
@@ -173,6 +198,49 @@ namespace
 		return NULL;
 	}
 
+	// Client rectangle in screen coordinates, which is what ClipCursor and
+	// SetCursorPos both want.
+	bool GetClientRectOnScreen(RECT &rc)
+	{
+		if (s_hWnd == NULL) return false;
+		if (!GetClientRect(s_hWnd, &rc)) return false;
+
+		POINT tl; tl.x = rc.left;  tl.y = rc.top;
+		POINT br; br.x = rc.right; br.y = rc.bottom;
+		if (!ClientToScreen(s_hWnd, &tl)) return false;
+		if (!ClientToScreen(s_hWnd, &br)) return false;
+
+		rc.left = tl.x; rc.top = tl.y; rc.right = br.x; rc.bottom = br.y;
+		return (rc.right > rc.left) && (rc.bottom > rc.top);
+	}
+
+	// Park the cursor on the centre of the window.
+	//
+	// ClipCursor alone is not enough to keep it there. Windows drops the clip
+	// whenever another window activates, a display or DPI change happens, or a
+	// system dialog appears, and it is never restored on its own - after which
+	// the cursor is free to wander onto another monitor while the player is
+	// still looking around with raw input, and the next click lands in whatever
+	// window it happens to be over. Re-centring every tick makes the position
+	// self-correcting instead of depending on the clip surviving.
+	//
+	// Look is driven entirely by WM_INPUT deltas, which report physical device
+	// movement, so warping the cursor contributes no motion of its own and
+	// there is nothing to filter back out.
+	void PinCursorToCentre()
+	{
+		RECT rc;
+		if (!GetClientRectOnScreen(rc)) return;
+
+		const int iCentreX = rc.left + (rc.right  - rc.left) / 2;
+		const int iCentreY = rc.top  + (rc.bottom - rc.top ) / 2;
+
+		POINT pt;
+		if (GetCursorPos(&pt) && pt.x == iCentreX && pt.y == iCentreY) return;
+
+		SetCursorPos(iCentreX, iCentreY);
+	}
+
 	void ApplyCapture()
 	{
 		if (s_hWnd == NULL) return;
@@ -180,13 +248,8 @@ namespace
 		if (s_captured && s_hasFocus)
 		{
 			RECT rc;
-			GetClientRect(s_hWnd, &rc);
-			POINT tl; tl.x = rc.left;  tl.y = rc.top;
-			POINT br; br.x = rc.right; br.y = rc.bottom;
-			ClientToScreen(s_hWnd, &tl);
-			ClientToScreen(s_hWnd, &br);
-			rc.left = tl.x; rc.top = tl.y; rc.right = br.x; rc.bottom = br.y;
-			ClipCursor(&rc);
+			if (GetClientRectOnScreen(rc)) ClipCursor(&rc);
+			PinCursorToCentre();
 			while (ShowCursor(FALSE) >= 0) {}
 		}
 		else
@@ -210,6 +273,7 @@ namespace Win64Input
 		for (int i = 0; i < KEY_STATE_COUNT; i++)
 		{
 			s_keyDown[i] = s_keyThisTick[i] = s_keyLastTick[i] = false;
+			s_keyHeldTicks[i] = 0;
 		}
 
 		// Raw input gives true relative motion, so we never have to warp the
@@ -279,15 +343,23 @@ namespace Win64Input
 		{
 			// Drop every key so nothing sticks down while we are in the
 			// background - a held W would otherwise walk forever.
-			for (int i = 0; i < KEY_STATE_COUNT; i++) s_keyDown[i] = false;
+			for (int i = 0; i < KEY_STATE_COUNT; i++) { s_keyDown[i] = false; s_keyHeldTicks[i] = 0; }
 			s_mouseAccumX = s_mouseAccumY = 0.0f;
 			SetCaptured(false);
 		}
 		ApplyCapture();
 	}
 
-	bool InUse()		{ return s_inUse; }
-	bool IsCaptured()	{ return s_captured; }
+	void OnWindowMoved()
+	{
+		// The clip rectangle is in screen space, so a move or resize leaves it
+		// pointing at where the window used to be.
+		ApplyCapture();
+	}
+
+	bool InUse()				{ return s_inUse; }
+	bool IsCaptured()			{ return s_captured; }
+	bool WantsHiddenCursor()	{ return s_captured && s_hasFocus; }
 
 	void SetCaptured(bool bCapture)
 	{
@@ -316,6 +388,9 @@ void C_Win64Input::Tick(void)
 	{
 		s_keyLastTick[i] = s_keyThisTick[i];
 		s_keyThisTick[i] = s_keyDown[i];
+
+		if (s_keyThisTick[i])	s_keyHeldTicks[i]++;
+		else					s_keyHeldTicks[i] = 0;
 	}
 
 	// Convert accumulated raw mouse motion into a stick deflection.
@@ -329,6 +404,52 @@ void C_Win64Input::Tick(void)
 
 	if (s_wheelUpTicks   > 0) s_wheelUpTicks--;
 	if (s_wheelDownTicks > 0) s_wheelDownTicks--;
+
+	// Keep the cursor on the window centre while we are driving mouse-look.
+	// Done here rather than only on capture and focus changes because the
+	// things that break the cursor clip do not send us a message.
+	if (s_captured && s_hasFocus) PinCursorToCentre();
+}
+
+// The action-value query.
+//
+// This is the path jump (Input.cpp), place/use and hotbar scrolling
+// (Minecraft.cpp) read, and it is entirely separate from ButtonPressed /
+// ButtonDown - so shadowing only those left every one of them dead on the
+// keyboard even though the bindings existed.
+//
+// bRepeat == false is a level query: is the action active right now. That is
+// what jump wants, so that holding space keeps jumping.
+// bRepeat == true is an edge query with auto-repeat, matching how the library
+// treats a held pad button for scrolling and repeated block placement.
+unsigned int C_Win64Input::GetValue(int iPad, unsigned char ucAction, bool bRepeat)
+{
+	unsigned int uiPad = C_4JInput::GetValue(iPad, ucAction, bRepeat);
+	if (uiPad > 0) return uiPad;
+
+	if (iPad != 0 || !s_inUse) return 0;
+
+	int iWheelTicks = 0;
+	if (ActionHasWheel(ucAction, iWheelTicks))
+	{
+		// A wheel notch is inherently an edge, so with repeat asked for it
+		// reports only on the notch's first tick rather than every tick of the
+		// hold - otherwise one notch would scroll the hotbar twice.
+		const bool bActive = bRepeat ? (iWheelTicks == WHEEL_HOLD_TICKS) : (iWheelTicks > 0);
+		return bActive ? ACTION_VALUE_ON : 0;
+	}
+
+	const SActionBinding *pBinding = FindBinding(ucAction);
+	if (pBinding == NULL) return 0;
+
+	for (int i = 0; i < MAX_KEYS_PER_ACTION; i++)
+	{
+		const int iKey = pBinding->iKeys[i];
+		if (iKey == 0) continue;
+
+		if (bRepeat ? KeyRepeated(iKey) : KeyHeld(iKey)) return ACTION_VALUE_ON;
+	}
+	return 0;
 }
 
 bool C_Win64Input::ButtonPressed(int iPad, unsigned char ucAction)

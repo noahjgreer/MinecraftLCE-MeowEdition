@@ -45,6 +45,20 @@ correct and must stay — the exe imports both directly.
 To undo: delete `Builds/Windows-x64-Release/Durango/` and
 `Builds/Windows-x64-Release/redist64/`.
 
+## Superseded on the same day
+
+Two things in this note were later corrected — see
+`2026-08-26-windows-x64-runtime-staging.md`:
+
+1. The `redist64` set staged here came from
+   `Minecraft.Client\Windows64\Miles\lib\redist64\`, which is a **different Miles
+   version** from the shipping `mss64.dll` (its `binkawin64.asi` is 110,592 bytes
+   against 110,080) and would not have loaded. The correct source is
+   `Minecraft.Client\redist64\`, and the build folder has been corrected.
+2. The manual staging described below is now done automatically by
+   `Minecraft.Client\postbuild.ps1`, and `package-win64.ps1` assembles the shareable
+   tree. The "no post-build copy step" gap noted at the bottom is closed.
+
 ## Unverified
 
 Everything here is static analysis of the file layout. **Whether the game now

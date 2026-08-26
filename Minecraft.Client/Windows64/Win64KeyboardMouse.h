@@ -31,6 +31,14 @@ namespace Win64Input
 	void OnRawMouseMove(int iDeltaX, int iDeltaY);
 	void OnFocusChanged(bool bHasFocus);
 
+	// The cursor clip rectangle is in screen coordinates, so it goes stale the
+	// moment the window moves or resizes. Call from WM_MOVE / WM_SIZE.
+	void OnWindowMoved();
+
+	// True while we are hiding and pinning the cursor, so WM_SETCURSOR can stop
+	// the window class cursor being put back every time the mouse is moved.
+	bool WantsHiddenCursor();
+
 	// Registers for raw mouse input and remembers the window. Call once, after
 	// the main window exists.
 	void Initialise(HWND hWnd);
@@ -53,6 +61,12 @@ public:
 	// static type of the Win64InputManager object, so shadowing is sufficient
 	// and avoids assuming anything about the library's layout).
 	void	Tick(void);
+
+	// The action-value query. This is a separate path from ButtonPressed /
+	// ButtonDown and is what jump, place/use, hotbar scrolling and menu cancel
+	// actually read - see Input.cpp and Minecraft.cpp. Missing this shadow is
+	// why those did nothing from the keyboard.
+	unsigned int GetValue(int iPad, unsigned char ucAction, bool bRepeat = false);
 
 	bool	ButtonPressed(int iPad, unsigned char ucAction = 255);
 	bool	ButtonReleased(int iPad, unsigned char ucAction);

@@ -62,37 +62,72 @@ music/cds/*.binka
 Common/, Windows64Media/, ...
 ```
 
-Sources for the staged files:
+Sources for the staged files, all git-tracked:
 
-- `Minecraft.msscmp` — `Minecraft.Client/Durango/Sound/Minecraft.msscmp` (12,276,954 B).
-  Two other candidates exist and are **not** byte-identical:
-  `Minecraft.Client/DurangoMedia/Sound/Minecraft.msscmp` (12,420,314 B, the packaged
-  Durango media copy) and `Minecraft.Client/Minecraft.msscmp` (11,622,790 B). The
-  `Durango/Sound/` one was chosen because the code's relative path names that exact
-  directory. If sounds are missing or wrong, try the `DurangoMedia` copy next.
-- redist modules — `Minecraft.Client/Windows64/Miles/lib/redist64/`.
-- `mss64.dll` — shipped in `Builds/Windows-x64-Release/`; there is no copy under
-  `Minecraft.Client/Windows64/Miles/lib/`, so do not delete it.
+| Staged as | Source in the tree |
+|---|---|
+| `Durango/Sound/Minecraft.msscmp` | `Minecraft.Client/Durango/Sound/Minecraft.msscmp` |
+| `redist64/*` | `Minecraft.Client/redist64/` |
+| `mss64.dll`, `iggy_w64.dll` | `x64/Release/` |
 
-`Effects.msscmp` at the root of the build folder is a **Miles SDK sample bank**, not a
-game asset — nothing loads it. Harmless, but it is not a substitute for
-`Minecraft.msscmp`.
+### Careful: three different Miles redists are in the tree
 
-## Known gaps
+`binkawin64.asi` and the five `.flt` files exist in **three** places, and they are
+not the same files:
 
-- **No post-build staging step.** `Minecraft.Client.vcxproj` puts the exe in
-  `Minecraft.Client/bin/x64/Release/` and copies none of the above. The runnable tree
-  in `Builds/Windows-x64-Release/` is assembled by hand, which is exactly how the
-  soundbank went missing. A post-build copy (or a staging script) would prevent a
-  repeat.
-- `AIL_set_redist_directory` / `m_szSoundPath` being CWD-relative means launching the
-  exe from anywhere other than its own folder silences the game. Making these
-  exe-relative (`GetModuleFileName` + strip) would be the robust fix.
-- The `Durango\Sound\` path on a Windows build is a 4J leftover from sharing assets
-  with the Xbox One target. Renaming it is cosmetic but would need the constant and
-  the staged tree changed together.
+| Path | Sizes | Verdict |
+|---|---|---|
+| `Minecraft.Client/redist64/` | asi 110,080 | **use this** |
+| `x64/Release/redist64/` | asi 110,080 | same version, different build |
+| `Minecraft.Client/Windows64/Miles/lib/redist64/` | asi 110,592 | **different Miles version — do not use** |
+
+`mss64.dll` reports FileVersion **9.3m**. Miles refuses to load provider modules
+that do not match the driver, so the `Windows64/Miles/lib/redist64/` set — the one
+that came with the SDK headers — is the wrong one to ship despite living in the most
+plausible-looking directory. The first two sets have identical file sizes to each
+other, so they are the same Miles version; `Minecraft.Client/redist64/` is used
+because it is the per-platform packaging directory, matching how `Windows64Media/`
+relates to `Windows64/`.
+
+`mss64.dll` exists **only** under `x64/Release/`. Despite the name, that folder is
+not build output — `OutDir` and `IntDir` both live under `Minecraft.Client\bin\`.
+It is 4J's runtime-support staging folder and it is git-tracked.
+
+There is also a second `iggy_w64.dll` at `Windows64/Iggy/lib/redist64/` with 201
+exports versus the 203 in `x64/Release/`. Both satisfy all 41 Iggy symbols the exe
+imports, so either works; the `x64/Release` copy is preferred as the one that has
+been shipping. The extra two exports are `IggyFontSetFallbackFontUTF16/UTF8`.
+
+`Effects.msscmp` is a **Miles SDK sample bank**, not a game asset — nothing loads it.
+It is not a substitute for `Minecraft.msscmp`.
+
+## No VC++ redistributable needed
+
+`Release|x64` compiles with `RuntimeLibrary=MultiThreaded` (`/MT`), so the CRT is
+linked statically. `dumpbin /dependents` on the exe confirms it: the only non-OS
+imports are `mss64.dll` and `iggy_w64.dll`, and those two import nothing beyond
+`KERNEL32`, `USER32` and `WINMM`. A build can be handed to someone with a stock
+Windows install and nothing else.
+
+## Staging is automatic
+
+`Minecraft.Client/postbuild.ps1` stages everything above into `$(OutDir)` on every
+x64/ARM64EC/Win32 build, and prints an explicit `INCOMPLETE BUILD` warning listing
+anything still missing. `package-win64.ps1` at the repo root then mirrors `$(OutDir)`
+into `Builds/Windows-x64-Release/`, stripping `.pch`/`.pdb` and local save data, and
+refuses to report success if a required file is absent.
+
+## Remaining rough edges
+
+- The `Durango\Sound\` path on a Windows build is a 4J leftover from sharing sound
+  assets with the Xbox One target. Renaming it is cosmetic but needs `m_szSoundPath`
+  and the staged tree changed together.
+- `SoundEngine::init()` still has no partial-audio fallback. If a future asset change
+  breaks the bank, the symptom will again be *total* silence rather than missing
+  effects, which is a misleading thing to have to debug twice.
 
 ## Not verified
 
-Only the file layout was checked, statically. Whether Miles now initialises and the
-game actually produces sound has to be confirmed by running it.
+The file layout, the dependency closure and the staging scripts were checked
+statically and by running the build. **Whether the game actually produces sound has
+not been confirmed** — that needs someone to run it.

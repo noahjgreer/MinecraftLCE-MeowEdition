@@ -44,7 +44,10 @@ run by an agent, so almost every entry should say so explicitly.
 - [2026-08-26 — Retarget Windows x64 to MSVC v143 and get it linking](changes/2026-08-26-retarget-x64-to-v143.md) — first build of `Minecraft.Client.exe` without VS2012; includes an unresolved vendored-binary question.
 - [2026-08-26 — Keyboard and mouse input for the Windows x64 build](changes/2026-08-26-windows-keyboard-mouse-input.md) — the Windows port never had any; also fixes the never-generated platform UI skin.
 - [2026-08-26 — Windows x64 build had no audio at all](changes/2026-08-26-windows-x64-silent-audio.md) — a missing soundbank tore down the whole Miles driver; staging fix, no source change.
+- [2026-08-26 — Stage the full runtime into the build, and package it for sharing](changes/2026-08-26-windows-x64-runtime-staging.md) — post-build now emits a complete runnable tree; adds package-win64.ps1 and an exe-relative working directory.
 - [2026-08-26 — Atlas slicer and `.pck` extractor](changes/2026-08-26-atlas-slicer-and-pck-extractor.md) — two new tools in `tools/`; slices the atlases into 462 per-icon PNGs with a byte-exact re-stitch check. No C++ changed.
+- [2026-08-26 — Jump/place fixed (`GetValue`), and the cursor pinned to the window](changes/2026-08-26-win64-getvalue-and-cursor-pinning.md) — a fourth, unshadowed input query is why space, right-click and the scroll wheel did nothing.
+- [2026-08-26 — No depth buffer on Windows x64: an uninitialised DSV descriptor](changes/2026-08-26-win64-depth-buffer-uninitialised-dsv.md) — `Flags` was never assigned, so depth writes were dropped or the view failed to create; also clears the atlas slicer of blame.
 
 ## Ground rules
 
