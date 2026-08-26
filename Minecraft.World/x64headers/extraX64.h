@@ -88,6 +88,17 @@ bool IsEqualXUID(PlayerUID a, PlayerUID b);
 
 using namespace std;
 
+// 4J Meow - <xhash>'s hash_value() helper was removed from the MSVC STL after
+// VS2013. Only modern toolsets need the shim; v110 (Win32/Durango) and the
+// console compilers still provide the original, so they are left untouched.
+// Forwards to std::hash, which is what the old helper did.
+#if defined(_MSC_VER) && _MSC_VER >= 1900
+template<class _Kty> inline size_t hash_value(const _Kty& _Keyval)
+{
+	return (std::hash<_Kty>()(_Keyval));
+}
+#endif
+
 // Temporary implementation of lock free stack with quite a bit more locking than you might expect
 template <typename T> class XLockFreeStack
 {

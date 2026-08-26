@@ -10,6 +10,6 @@ private:
 	static Language *lang;
 
 public:
-    static wstring get(const wstring& id, ...);
+    static wstring get(wstring id, ...);	// 4J Meow - by value: va_start may not take a reference parameter
 	static wstring get(const wstring& id, va_list args);
 };

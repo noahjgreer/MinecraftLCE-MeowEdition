@@ -135,3 +135,18 @@ public:
 
 // Singleton
 extern C_4JInput InputManager;
+
+// 4J Meow - Keyboard and mouse support for the Windows x64 build.
+//
+// 4J_Input.lib is prebuilt with no source, so C_4JInput cannot be taught about
+// keyboards directly. Win64KeyboardMouse.h declares C_Win64Input, a subclass
+// that shadows the few methods that need to merge in keyboard/mouse state, and
+// the macro below redirects every existing `InputManager.` call site onto it
+// without editing any of them.
+//
+// The macro must stay *after* the extern above, so that declaration still names
+// the library's own symbol.
+#if defined(_WINDOWS64) && !defined(WIN64_INPUT_NO_REDIRECT)
+#include "../../Win64KeyboardMouse.h"
+#define InputManager Win64InputManager
+#endif

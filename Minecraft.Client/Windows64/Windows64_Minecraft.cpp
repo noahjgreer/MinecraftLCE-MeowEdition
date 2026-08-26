@@ -2,6 +2,7 @@
 //
 
 #include "stdafx.h"
+#include "Win64KeyboardMouse.h"
 
 #include <assert.h>
 #include "GameConfig\Minecraft.spa.h"
@@ -336,6 +337,48 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		// TODO: Add any drawing code here...
 		EndPaint(hWnd, &ps);
 		break;
+	// 4J Meow - Keyboard and mouse. The Windows64 port shipped with none of
+	// this; these forward into Win64KeyboardMouse, which merges the state into
+	// the 4J_Input action model the rest of the game reads from.
+	case WM_KEYDOWN:
+	case WM_SYSKEYDOWN:
+		Win64Input::OnKeyDown((int)wParam);
+		break;
+	case WM_KEYUP:
+	case WM_SYSKEYUP:
+		Win64Input::OnKeyUp((int)wParam);
+		break;
+	case WM_LBUTTONDOWN:	Win64Input::OnMouseButton(0, true);	break;
+	case WM_LBUTTONUP:		Win64Input::OnMouseButton(0, false);	break;
+	case WM_RBUTTONDOWN:	Win64Input::OnMouseButton(1, true);	break;
+	case WM_RBUTTONUP:		Win64Input::OnMouseButton(1, false);	break;
+	case WM_MBUTTONDOWN:	Win64Input::OnMouseButton(2, true);	break;
+	case WM_MBUTTONUP:		Win64Input::OnMouseButton(2, false);	break;
+	case WM_MOUSEWHEEL:
+		Win64Input::OnMouseWheel(GET_WHEEL_DELTA_WPARAM(wParam));
+		break;
+	case WM_INPUT:
+		{
+			UINT dwSize = 0;
+			GetRawInputData((HRAWINPUT)lParam, RID_INPUT, NULL, &dwSize, sizeof(RAWINPUTHEADER));
+			if (dwSize > 0 && dwSize <= sizeof(RAWINPUT))
+			{
+				RAWINPUT ri;
+				if (GetRawInputData((HRAWINPUT)lParam, RID_INPUT, &ri, &dwSize, sizeof(RAWINPUTHEADER)) == dwSize
+					&& ri.header.dwType == RIM_TYPEMOUSE
+					&& (ri.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE) == 0)
+				{
+					Win64Input::OnRawMouseMove(ri.data.mouse.lLastX, ri.data.mouse.lLastY);
+				}
+			}
+		}
+		return DefWindowProc(hWnd, message, wParam, lParam);
+	case WM_SETFOCUS:
+		Win64Input::OnFocusChanged(true);
+		break;
+	case WM_KILLFOCUS:
+		Win64Input::OnFocusChanged(false);
+		break;
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		break;
@@ -407,6 +450,9 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 	ShowWindow(g_hWnd, nCmdShow);
 	UpdateWindow(g_hWnd);
+
+	// 4J Meow - start listening for keyboard and raw mouse input.
+	Win64Input::Initialise(g_hWnd);
 
 	return TRUE;
 }
