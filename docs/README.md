@@ -54,6 +54,7 @@ run by an agent, so almost every entry should say so explicitly.
 - [2026-08-26 — Jump/place fixed (`GetValue`), and the cursor pinned to the window](changes/2026-08-26-win64-getvalue-and-cursor-pinning.md) — a fourth, unshadowed input query is why space, right-click and the scroll wheel did nothing.
 - [2026-08-26 — No depth buffer on Windows x64: an uninitialised DSV descriptor](changes/2026-08-26-win64-depth-buffer-uninitialised-dsv.md) — `Flags` was never assigned, so depth writes were dropped or the view failed to create; also clears the atlas slicer of blame.
 - [2026-08-26 — Java-Edition-style mouse look (Windows x64)](changes/2026-08-26-java-style-mouse-look.md) — mouse look was being driven through the controller stick path; it now turns the player directly, once per frame.
+- [2026-08-26 - Client hung on the 4J logo](changes/2026-08-26-client-hang-on-logo.md) - an unguarded Win64DedicatedServer::Tick() silently started a dedicated server 60 frames into every client launch.
 
 ## Ground rules
 

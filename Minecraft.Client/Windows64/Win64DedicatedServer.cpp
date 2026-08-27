@@ -276,7 +276,14 @@ namespace Win64DedicatedServer
 
 	void Tick()
 	{
-		// 4J Meow - The server is started from the frame loop, not from
+		// 4J Meow - Tick() is called unconditionally from the frame loop, so it
+		// has to gate itself. Without this a plain client launch would start a
+		// dedicated server ~60 frames in - i.e. on the 4J logo - and then block
+		// the main thread in StartDedicatedServer's ServerReadyWait(), silently,
+		// because the logging is only initialised on a real server launch.
+		if (!IsEnabled()) return;
+
+		// The server is started from the frame loop, not from
 		// Minecraft::init(). Starting inside init() crashed in the ServerLevel
 		// constructor: the normal path reaches the server from a UI scene long
 		// after the game is up and looping, and parts of the client that
