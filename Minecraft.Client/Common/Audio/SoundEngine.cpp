@@ -24,20 +24,27 @@
 //#define __DISABLE_MILES__			// MGH disabled for now as it crashes if we call sceNpMatching2Initialize
 #endif 
 
+// 4J Meow - see the comment on the declaration in SoundEngine.h. Defined outside
+// the platform split below so both the stub and the real implementation share it.
+bool SoundEngine::s_bDisabled = false;
+
 // take out Orbis until they are done
 #if defined _XBOX 
 
 SoundEngine::SoundEngine() {}
 void SoundEngine::init(Options *pOptions)
 {
+	if (SoundEngine::s_bDisabled) return;
 }
 
 void SoundEngine::tick(shared_ptr<Mob> *players, float a)
 {
+	if (SoundEngine::s_bDisabled) return;
 }
 void SoundEngine::destroy() {}
 void SoundEngine::play(int iSound, float x, float y, float z, float volume, float pitch)
 {
+	if (SoundEngine::s_bDisabled) return;
 	app.DebugPrintf("PlaySound - %d\n",iSound);
 }
 void SoundEngine::playStreaming(const wstring& name, float x, float y , float z, float volume, float pitch, bool bMusicDelay) {}
@@ -203,6 +210,7 @@ void AILCALL MilesMixerCB(HDIGDRIVER dig)
 /////////////////////////////////////////////
 void SoundEngine::init(Options *pOptions)
 {
+	if (SoundEngine::s_bDisabled) return;
 	app.DebugPrintf("---SoundEngine::init\n");
 #ifdef __DISABLE_MILES__
 	return;
@@ -624,6 +632,7 @@ static S32 running = AIL_ms_count();
 
 void SoundEngine::tick(shared_ptr<Mob> *players, float a)
 {
+	if (SoundEngine::s_bDisabled) return;
 #ifdef __DISABLE_MILES__
 	return;
 #endif
@@ -753,6 +762,7 @@ void SoundEngine::GetSoundName(char *szSoundName,int iSound)
 /////////////////////////////////////////////
 void SoundEngine::play(int iSound, float x, float y, float z, float volume, float pitch)
 {
+	if (SoundEngine::s_bDisabled) return;
 	U8 szSoundName[256];
 
 	if(iSound==-1)
@@ -812,6 +822,7 @@ void SoundEngine::play(int iSound, float x, float y, float z, float volume, floa
 /////////////////////////////////////////////
 void SoundEngine::playUI(int iSound, float volume, float pitch) 
 {
+	if (SoundEngine::s_bDisabled) return;
 	U8 szSoundName[256];
 	wstring name;
 	// we have some game sounds played as UI sounds...
@@ -874,6 +885,7 @@ void SoundEngine::playUI(int iSound, float volume, float pitch)
 /////////////////////////////////////////////
 void SoundEngine::playStreaming(const wstring& name, float x, float y , float z, float volume, float pitch, bool bMusicDelay)
 {
+	if (SoundEngine::s_bDisabled) return;
 	// This function doesn't actually play a streaming sound, just sets states and an id for the music tick to play it
 	// Level audio will be played when a play with an empty name comes in
 	// CD audio will be played when a named stream comes in
@@ -1148,6 +1160,7 @@ void SoundEngine::playMusicTick()
 // AP - moved to a separate function so it can be called from the mixer callback on Vita
 void SoundEngine::playMusicUpdate() 
 {
+	if (SoundEngine::s_bDisabled) return;
 	//return;
 	static bool firstCall = true;
 	static float fMusicVol = 0.0f;

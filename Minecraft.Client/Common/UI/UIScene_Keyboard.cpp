@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "UI.h"
 #include "UIScene_Keyboard.h"
+#include "UITextEdit.h"
 
 #define KEYBOARD_DONE_TIMER_ID 0
 #define KEYBOARD_DONE_TIMER_TIME 100
@@ -10,10 +11,27 @@ UIScene_Keyboard::UIScene_Keyboard(int iPad, void *initData, UILayer *parentLaye
 	// Setup all the Iggy references we need for this scene
 	initialiseMovie();
 
-	m_EnterTextLabel.init(L"Enter Sign Text");
+	// 4J Meow - 4J left this scene built but never connected to anything: it
+	// had a hardcoded sign-entry title, a hardcoded 15 character limit, and a
+	// Done handler whose only comment was a ToDo about passing the string on.
+	//
+	// It is now the fallback for InputManager.RequestKeyboard - the case where
+	// the request cannot be typed straight into a menu field, either because
+	// the scene has no text input focused (renaming a save) or because the
+	// player is on a pad and has no keyboard to type with. So the title, the
+	// starting text and the character limit come from the request.
+	wstring title		= L"Enter Sign Text";
+	wstring startText	= L"";
+	int iMaxChars		= 15;
 
-	m_KeyboardTextInput.init(L"", -1);
-	m_KeyboardTextInput.SetCharLimit(15);
+#ifdef _UI_INLINE_TEXT_ENTRY
+	g_UITextEdit.ClaimPending(this, &m_KeyboardTextInput, title, startText, iMaxChars);
+#endif
+
+	m_EnterTextLabel.init(title);
+
+	m_KeyboardTextInput.init(startText, -1);
+	m_KeyboardTextInput.SetCharLimit(iMaxChars);
 	
 	m_ButtonSpace.init(L"Space", -1);
 	m_ButtonCursorLeft.init(L"Cursor Left", -1);
@@ -90,6 +108,12 @@ void UIScene_Keyboard::handleInput(int iPad, int key, bool repeat, bool pressed,
 		switch(key)
 		{
 		case ACTION_MENU_CANCEL:
+#ifdef _UI_INLINE_TEXT_ENTRY
+			// Backing out is a cancelled keyboard, which the caller has to be
+			// told about - every RequestKeyboard callback in the game takes a
+			// bRes and leaves its field alone when it is false.
+			g_UITextEdit.Finish(false);
+#endif
 			navigateBack();
 			handled = true;
 			break;
@@ -176,6 +200,12 @@ void UIScene_Keyboard::KeyboardDonePressed()
 	// Debug
 	app.DebugPrintf("UI Keyboard - DONE - [%ls]\n", m_KeyboardTextInput.getLabel());
 
-	// ToDo: Keyboard can now pass on its final string value and close itself down
+#ifdef _UI_INLINE_TEXT_ENTRY
+	// Hands the text to whoever called RequestKeyboard. Finish re-reads it from
+	// the text field rather than from its own buffer, because in this scene it
+	// is ActionScript - driven by the on-screen keys - that owns the text.
+	g_UITextEdit.Finish(true);
+#endif
+
 	navigateBack();
 }

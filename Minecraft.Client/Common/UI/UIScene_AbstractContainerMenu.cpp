@@ -5,6 +5,9 @@
 #include "..\..\..\Minecraft.World\net.minecraft.world.inventory.h"
 #include "..\..\..\Minecraft.World\net.minecraft.world.item.h"
 #include "..\..\MultiplayerLocalPlayer.h"
+#ifdef _UI_MOUSE_POINTER
+#include "..\..\Windows64\Win64KeyboardMouse.h"
+#endif
 
 UIScene_AbstractContainerMenu::UIScene_AbstractContainerMenu(int iPad, UILayer *parentLayer) : UIScene(iPad, parentLayer)
 {
@@ -173,6 +176,10 @@ void UIScene_AbstractContainerMenu::tick()
 {
 	UIScene::tick();
 
+#ifdef _UI_MOUSE_POINTER
+	UpdatePointerFromMouse();
+#endif
+
 	onMouseTick();
 
 	IggyEvent mouseEvent;
@@ -191,6 +198,49 @@ void UIScene_AbstractContainerMenu::tick()
 	IggyEventResult result;
 	IggyPlayerDispatchEventRS ( getMovie() , &mouseEvent , &result );
 }
+
+#ifdef _UI_MOUSE_POINTER
+// 4J Meow - drive the in-menu pointer from the real mouse.
+//
+// The container menus already had a free-moving pointer with slot hit-testing
+// behind it; what they did not have was a pointing device. The stick drove it
+// through onMouseTick as a rate control - hold a direction, the pointer
+// accelerates - with a snap-to-slot-centre and a tap-to-jump-a-slot on top to
+// make that bearable. A mouse needs none of that: it already is a position.
+//
+// So the position is written straight in here, in movie coordinates, and
+// m_bPointerFromMouse tells onMouseTick to treat it as settled input. This is
+// the only place with both halves of the conversion in scope - the window from
+// Win64Input, and the scene's authored size from UIScene.
+//
+// The OS cursor is hidden while a container menu is up (Win64Input's
+// ePointerMode_HiddenCursor), because this Flash pointer is the cursor; two of
+// them, one lagging the other by a frame, is worse than either.
+void UIScene_AbstractContainerMenu::UpdatePointerFromMouse()
+{
+	m_bPointerFromMouse = false;
+
+	if(!Win64Input::IsPointerActive()) return;
+	if(Win64Input::GetPointerMode() != Win64Input::ePointerMode_HiddenCursor) return;
+
+	// Player 1 only, matching the rest of the keyboard and mouse support -
+	// splitscreen guests keep the stick pointer.
+	if(m_iPad != 0) return;
+
+	float fPointerX = 0.0f, fPointerY = 0.0f;
+	if(!Win64Input::GetPointerPos(fPointerX, fPointerY)) return;
+
+	int iClientW = 0, iClientH = 0;
+	if(!Win64Input::GetClientSize(iClientW, iClientH)) return;
+
+	if(m_movieWidth <= 0 || m_movieHeight <= 0) return;
+
+	m_pointerPos.x = fPointerX * (float)m_movieWidth  / (float)iClientW;
+	m_pointerPos.y = fPointerY * (float)m_movieHeight / (float)iClientH;
+
+	m_bPointerFromMouse = true;
+}
+#endif // _UI_MOUSE_POINTER
 
 void UIScene_AbstractContainerMenu::render(S32 width, S32 height, C4JRender::eViewportType viewpBort)
 {

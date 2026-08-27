@@ -20,6 +20,7 @@
 #include "StatsCounter.h"
 #include "Windows64\Social\SocialManager.h"
 #include "Windows64\Sentient\DynamicConfigurations.h"
+#include "Windows64\Win64ProfileStore.h"
 #elif defined __PSVITA__
 #include "PSVita\Sentient\SentientManager.h"
 #include "StatsCounter.h"
@@ -447,6 +448,11 @@ void				C_4JProfile::Initialise( DWORD dwTitleID,
 		// Has gone halfway through the tutorial
 		pGameSettings->ucTutorialCompletion[28] |= 1<<0;
 	}
+
+	// 4J Meow - the defaults above are the starting point; anything the player
+	// has since changed comes back off disk over the top of them, so options
+	// survive a restart. See Windows64\Win64ProfileStore.cpp.
+	Win64ProfileStore::Load(profileData,iGameDefinedDataSizeX4/4);
 }
 void				C_4JProfile::SetTrialTextStringTable(CXuiStringTable *pStringTable,int iAccept,int iReject) {}
 void				C_4JProfile::SetTrialAwardText(eAwardType AwardType,int iTitle,int iText) {}
@@ -512,8 +518,11 @@ int					C_4JProfile::SetOldProfileVersionCallback(int( *Func)(LPVOID,unsigned ch
 C_4JProfile::PROFILESETTINGS ProfileSettingsA[XUSER_MAX_COUNT];
 
 C_4JProfile::PROFILESETTINGS *	C_4JProfile::GetDashboardProfileSettings(int iPad) { return &ProfileSettingsA[iPad]; }
-void				C_4JProfile::WriteToProfile(int iQuadrant, bool bGameDefinedDataChanged, bool bOverride5MinuteLimitOnProfileWrites) {}
-void				C_4JProfile::ForceQueuedProfileWrites(int iPad) {}
+// 4J Meow - these were empty stubs, which is why settings never persisted.
+// The whole blob set is small, so both write all four pads out rather than
+// tracking which one changed.
+void				C_4JProfile::WriteToProfile(int iQuadrant, bool bGameDefinedDataChanged, bool bOverride5MinuteLimitOnProfileWrites) { Win64ProfileStore::Save(); }
+void				C_4JProfile::ForceQueuedProfileWrites(int iPad) { Win64ProfileStore::Save(); }
 void				*C_4JProfile::GetGameDefinedProfileData(int iQuadrant)
 {
 	// 4J Stu - Don't reset the options when we call this!!

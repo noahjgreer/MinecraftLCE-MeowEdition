@@ -1,5 +1,7 @@
 #pragma once
 
+#include "UIPointer.h"
+
 // This class for any name object in the flash scene
 class UIControl
 {
@@ -60,7 +62,10 @@ public:
 	UIControl();
 
 	virtual bool setupControl(UIScene *scene, IggyValuePath *parent, const string &controlName);
-#ifdef __PSVITA__
+#ifdef _UI_POINTER_SUPPORT
+	// Re-reads x/y/width/height out of Flash. Needed by any pointer hit-test:
+	// Iggy and ActionScript move controls around after setupControl ran, so the
+	// cached values are only correct for the frame they were taken on.
 	void UpdateControl();
 	void setHidden(bool bHidden) {m_bHidden=bHidden;}
 	bool getHidden(void) {return m_bHidden;}

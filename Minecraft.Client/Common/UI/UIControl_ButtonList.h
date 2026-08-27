@@ -37,7 +37,9 @@ public:
 
 	void setButtonLabel(int iButtonId, const wstring &label);
 
-#ifdef __PSVITA__
+#ifdef _UI_POINTER_SUPPORT
+	// A button list is one control containing many rows, so the pointer hit
+	// has to be resolved a second time inside it, by ActionScript.
 	void SetTouchFocus(S32 iX, S32 iY, bool bRepeat);
 	bool CanTouchTrigger(S32 iX, S32 iY);
 #endif

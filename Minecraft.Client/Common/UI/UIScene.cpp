@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "UI.h"
 #include "UIScene.h"
+#include "UITextEdit.h"
 
 #include "..\..\Lighting.h"
 #include "..\..\LocalPlayer.h"
@@ -36,6 +37,12 @@ UIScene::UIScene(int iPad, UILayer *parentLayer)
 
 UIScene::~UIScene()
 {
+#ifdef _UI_INLINE_TEXT_ENTRY
+	// An edit session holds this scene and one of its controls. Both are about
+	// to be freed, and the Iggy player below with them.
+	g_UITextEdit.SceneClosing(this);
+#endif
+
 	/* Destroy the Iggy player. */
 	IggyPlayerDestroy( swf );
 
@@ -233,7 +240,7 @@ void UIScene::initialiseMovie()
 	m_bUpdateOpacity = true;
 }
 
-#ifdef __PSVITA__
+#ifdef _UI_POINTER_SUPPORT
 void UIScene::SetFocusToElement(int iID)
 {
 	IggyDataValue result;
@@ -529,14 +536,17 @@ void UIScene::removeControl( UIControl_Base *control, bool centreScene)
 	value[1].boolval = centreScene;
 	IggyResult out = IggyPlayerCallMethodRS ( getMovie() , &result, IggyPlayerRootPath( getMovie() ), m_funcRemoveObject , 2 , value );
 
-#ifdef __PSVITA__
+#ifdef _UI_POINTER_SUPPORT
 	// update the button positions since they may have changed
 	UpdateSceneControls();
 
-	// mark the button as removed
+	// mark the button as removed, so a pointer hit-test skips it
 	control->setHidden(true);
-	// remove it from the touchboxes
+#ifdef __PSVITA__
+	// remove it from the touchboxes (Vita caches them; the mouse path
+	// hit-tests live, so it has nothing to rebuild)
 	ui.TouchBoxRebuild(control->getParentScene());
+#endif
 #endif
 
 }
@@ -1212,6 +1222,24 @@ int UIScene::getControlFocus()
 	return m_iFocusControl;
 }
 
+#ifdef _UI_INLINE_TEXT_ENTRY
+UIControl_Base *UIScene::findFocusedTextInput()
+{
+	for(unsigned int i = 0; i < m_controls.size(); ++i)
+	{
+		UIControl *pControl = m_controls[i];
+		if(pControl == NULL) continue;
+		if(pControl->getControlType() != UIControl::eTextInput) continue;
+		if(!controlHasFocus( pControl->getId() )) continue;
+
+		// Every control registered as eTextInput is a UIControl_TextInput,
+		// which derives from UIControl_Base - that is where the label lives.
+		return (UIControl_Base *)pControl;
+	}
+	return NULL;
+}
+#endif
+
 void UIScene::setBackScene(UIScene *scene)
 {
 	m_backScene = scene;
@@ -1221,7 +1249,7 @@ UIScene *UIScene::getBackScene()
 {
 	return m_backScene;
 }
-#ifdef __PSVITA__
+#ifdef _UI_POINTER_SUPPORT
 void UIScene::UpdateSceneControls()
 {
 	AUTO_VAR(itEnd, GetControls()->end());

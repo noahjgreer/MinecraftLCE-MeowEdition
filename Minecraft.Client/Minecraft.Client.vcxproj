@@ -29861,7 +29861,8 @@ xcopy /q /y /i /s /e $(ProjectDir)Durango\CU  $(LayoutDir)Image\Loose\CU</Comman
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage_Vita|ORBIS'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="Windows64\Win64CommandLine.cpp" />
-    <ClCompile Include="Windows64\Win64TextPrompt.cpp" />
+    <ClCompile Include="Windows64\Win64ProfileStore.cpp" />
+    <ClCompile Include="Common\UI\UITextEdit.cpp" />
     <ClCompile Include="Windows64\Win64DedicatedServer.cpp" />
     <ClCompile Include="Windows64\Win64CrtCompat.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage|Durango'">true</ExcludedFromBuild>

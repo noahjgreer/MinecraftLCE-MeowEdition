@@ -1,9 +1,18 @@
 # Dedicated server (Windows x64)
 
-Status: **implemented; server verified running and accepting TCP connections.**
-2026-08-26. World persistence across restarts is still unverified.
-See `docs/changes/2026-08-26-dedicated-server.md` for what landed and what to check
-on the first run.
+Status: **implemented and headless.** 2026-08-27. The server runs silent, with no
+window, no UI and no rendering; it accepts TCP connections, takes `stop` on stdin,
+saves and exits cleanly.
+
+**World persistence does NOT work, and the reason is now known:**
+`StorageManager.Init(...)` sits inside an `#if 0` in `Windows64_Minecraft.cpp`
+(line 945, block 908-955), so `StorageManager` is never initialised on this
+platform at all. The save blob is built and written nowhere. This affects client
+saving on Windows x64 equally - it is not a server-specific bug.
+
+Read `docs/changes/2026-08-27-headless-dedicated-server.md` first; it supersedes
+much of the detail below. `docs/changes/2026-08-26-dedicated-server.md` has the
+original bring-up.
 
 Goal: `Minecraft.Client.exe -dedicated -world "Server World" -port 25565` runs a
 headless, logging, world-saving server that friends join by address.

@@ -110,7 +110,11 @@ a friends-only server and should be written down as such, not quietly forgotten.
   OSK, living in the prebuilt `4J_Input.lib`.
 
 So menu-level UI on this platform is either an Iggy scene or a native window.
-Text entry uses `Win64TextPrompt`, a modal Win32 popup.
+
+**Superseded:** text entry used to be `Win64TextPrompt`, a modal Win32 popup.
+`RequestKeyboard` now has a PC implementation, so "Join Server" asks for its
+address and name inside the game and `Win64TextPrompt` has been deleted. See
+`windows-text-entry.md`.
 
 **The main menu can repurpose a button but not add one.** Labels come from
 `app.GetString(...)` string resources; only element names (`"Button1"`..`"Button6"`)

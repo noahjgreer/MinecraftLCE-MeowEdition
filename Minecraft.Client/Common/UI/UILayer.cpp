@@ -745,7 +745,7 @@ bool UILayer::updateFocusState(bool allowedFocus /* = false */)
 	return m_hasFocus;
 }
 
-#ifdef __PSVITA__
+#ifdef _UI_POINTER_SUPPORT
 UIScene *UILayer::getCurrentScene()
 {
 	// Note: reverse iterator, the last element is the top of the stack

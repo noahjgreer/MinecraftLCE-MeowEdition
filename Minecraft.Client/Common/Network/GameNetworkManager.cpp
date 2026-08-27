@@ -48,6 +48,9 @@ __int64 CGameNetworkManager::messageQueue[512];
 __int64 CGameNetworkManager::byteQueue[512];
 int CGameNetworkManager::messageQueuePos = 0;
 
+// 4J Meow - see the declaration in GameNetworkManager.h.
+bool CGameNetworkManager::s_bHeadless = false;
+
 CGameNetworkManager::CGameNetworkManager()
 {
 	m_bInitialised = false;
@@ -1997,7 +2000,7 @@ void CGameNetworkManager::ServerStoppedWait()
 		do
 		{
 #ifndef _XBOX
-			RenderManager.StartFrame();
+			if( !s_bHeadless ) RenderManager.StartFrame();
 #endif
 			result = m_hServerStoppedEvent->WaitForSignal(20);
 			// Tick some simple things
@@ -2005,9 +2008,17 @@ void CGameNetworkManager::ServerStoppedWait()
 			StorageManager.Tick();
 			InputManager.Tick();
 			RenderManager.Tick();
-			ui.tick();
-			ui.render();
-			RenderManager.Present();
+			// 4J Meow - a headless server never initialised the UI, so
+			// ui.tick() faults in UIGroup::getCurrentScene. StorageManager.Tick
+			// above is the one that actually matters here - it is what lets the
+			// save progress and the server thread finish, which is the whole
+			// reason this pump exists.
+			if( !s_bHeadless )
+			{
+				ui.tick();
+				ui.render();
+				RenderManager.Present();
+			}
 		} while( result == WAIT_TIMEOUT );
 	}
 	else

@@ -44,6 +44,18 @@ class CGameNetworkManager
 #endif
 public:
 	CGameNetworkManager();
+
+	// 4J Meow - platform-independent "this process has no UI and draws nothing"
+	// flag, set by the Windows x64 dedicated server. It lives here rather than
+	// behind an #ifdef _WINDOWS64 because the code that needs it (see
+	// ServerStoppedWait) is shared, and per the networking layering rule the
+	// game layers must not grow platform-specific branches.
+	//
+	// NB: deliberately NOT preceded by an access specifier - GameNetworkManager.h
+	// has a long implicit public region and inserting one here would silently
+	// make the rest of the class private and break Minecraft.World.
+	static bool		s_bHeadless;
+
 	// Misc high level flow
 
 	typedef enum

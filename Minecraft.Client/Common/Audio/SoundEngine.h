@@ -90,6 +90,14 @@ class SoundEngine : public ConsoleSoundEngine
 {
 	static const int MAX_SAME_SOUNDS_PLAYING = 8; // 4J added
 public:
+	// 4J Meow - runtime equivalent of 4J's own __DISABLE_MILES__ compile switch.
+	// Set before Minecraft is constructed to make the sound engine inert: init()
+	// never starts Miles, and every play/tick entry point returns immediately.
+	// Used by the dedicated server, which has nobody to hear anything and was
+	// otherwise loading soundbanks and playing the menu music to an empty room.
+	// Defaults to false, so no platform's behaviour changes unless it opts in.
+	static bool s_bDisabled;
+
 	SoundEngine();
 	virtual void destroy();
 #ifdef _DEBUG

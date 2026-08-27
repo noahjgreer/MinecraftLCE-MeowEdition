@@ -97,6 +97,19 @@ protected:
 
 	UIVec2D m_pointerPos;
 
+#ifdef _UI_MOUSE_POINTER
+	// 4J Meow - true on the ticks the pointer position came from a real mouse
+	// rather than from the left stick.
+	//
+	// The position itself is written straight into m_pointerPos by
+	// UIScene_AbstractContainerMenu::tick, which is the only place that can see
+	// both the window and the movie coordinate space. This flag is what
+	// onMouseTick needs from it: with a mouse there must be no snap-to-slot and
+	// no tap detection, because both exist to make a stick feel like a pointer
+	// and a pointer is already a pointer.
+	bool	m_bPointerFromMouse;
+#endif
+
 	// Offset from pointer image top left to centre (we use the centre as the actual pointer).
 	float	m_fPointerImageOffsetX;
 	float	m_fPointerImageOffsetY;

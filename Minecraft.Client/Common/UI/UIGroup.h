@@ -37,7 +37,7 @@ private:
 public:
 	UIGroup(EUIGroup group, int iPad);
 
-#ifdef __PSVITA__
+#ifdef _UI_POINTER_SUPPORT
 	EUIGroup GetGroup() {return m_group;}
 #endif
 	UIComponent_Tooltips *getTooltips() { return m_tooltips; }
@@ -74,7 +74,7 @@ public:
 	// INPUT
 	void handleInput(int iPad, int key, bool repeat, bool pressed, bool released, bool &handled);
 
-#ifdef __PSVITA__
+#ifdef _UI_POINTER_SUPPORT
 	// Current active scene
 	UIScene *getCurrentScene();
 #endif

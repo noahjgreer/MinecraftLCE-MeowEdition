@@ -42,7 +42,7 @@ bool UIControl::setupControl(UIScene *scene, IggyValuePath *parent, const string
 	return res;
 }
 
-#ifdef __PSVITA__
+#ifdef _UI_POINTER_SUPPORT
 void UIControl::UpdateControl()
 {
 	F64 fx, fy, fwidth, fheight;
@@ -55,7 +55,7 @@ void UIControl::UpdateControl()
 	m_width = (S32)Math::round(fwidth);
 	m_height = (S32)Math::round(fheight);
 }
-#endif // __PSVITA__
+#endif // _UI_POINTER_SUPPORT
 
 void UIControl::ReInit()
 {

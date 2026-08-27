@@ -2,6 +2,7 @@
 #include "UIController.h"
 #include "UI.h"
 #include "UIScene.h"
+#include "UITextEdit.h"
 #include "..\..\..\Minecraft.World\StringHelpers.h"
 #include "..\..\LocalPlayer.h"
 #include "..\..\DLCTexturePack.h"
@@ -13,6 +14,9 @@
 #include "UIFontData.h"
 #ifdef __PSVITA__
 #include <message_dialog.h>
+#endif
+#ifdef _UI_MOUSE_POINTER
+#include "..\..\Windows64\Win64KeyboardMouse.h"
 #endif
 
 // 4J Stu - Enable this to override the Iggy Allocator
@@ -167,6 +171,12 @@ UIController::UIController()
 	m_mcTTFFont= NULL;
 	m_moj7 = NULL;
 	m_moj11 = NULL;
+
+#ifdef _UI_MOUSE_POINTER
+	m_pMouseHoverControl = NULL;
+	m_pMouseHoverScene = NULL;
+	m_pMouseSliderControl = NULL;
+#endif
 
 #ifdef ENABLE_IGGY_ALLOCATOR
 	InitializeCriticalSection(&m_Allocatorlock);
@@ -694,6 +704,21 @@ void UIController::tickInput()
 
 void UIController::handleInput()
 {
+#ifdef _UI_MOUSE_POINTER
+	// Before the key pass, not after: focus has to already be on whatever the
+	// pointer is over by the time the click that travels the key path below is
+	// read, or the click activates the previously focused control.
+	TickMousePointer();
+#endif
+
+#ifdef _UI_INLINE_TEXT_ENTRY
+	// Also before the key pass. While a field is being typed into, the keyboard
+	// stops being mapped onto menu and game actions at all (see
+	// Win64Input::SetTextInputActive), so the loop below sees nothing from it -
+	// otherwise typing a world name would walk the player and press buttons.
+	g_UITextEdit.Tick();
+#endif
+
 	// For each user, loop over each key type and send messages based on the state
 	for(unsigned int iPad = 0; iPad < XUSER_MAX_COUNT; ++iPad)
 	{
@@ -1039,6 +1064,269 @@ void UIController::handleKeyPress(unsigned int iPad, unsigned int key)
 			}
 		}
 }
+
+#ifdef _UI_MOUSE_POINTER
+
+// ---------------------------------------------------------------------------
+// 4J Meow - mouse pointer for the menus.
+//
+// The Vita already proved the menus can be driven from a screen position: its
+// touch path reads control bounds back out of Flash and calls SetFocus(id).
+// This does the same hit-test, but live rather than from a cached box list -
+// there is no touchbox cache to keep in step with scenes appearing, buttons
+// being removed, or ActionScript sliding a panel about mid-animation, and a
+// menu has few enough controls that walking them on the ticks the mouse
+// actually moved costs nothing measurable.
+//
+// Deliberately only sets focus. The click itself is an ordinary
+// ACTION_MENU_A/B/X coming from the mouse buttons (see MouseKeyForMenuAction in
+// Win64KeyboardMouse.cpp), so it reaches each scene's handleInput through
+// exactly the path the pad uses.
+// ---------------------------------------------------------------------------
+
+// Which controls a pointer is allowed to focus. Same set the Vita touchboxes
+// use, which is the set whose Flash side is known to respond to SetFocus.
+bool UIController::IsPointerFocusable(UIControl *pControl)
+{
+	if(pControl == NULL) return false;
+	if(pControl->getHidden()) return false;		// removed by RemoveObject
+	if(!pControl->getVisible()) return false;
+
+	switch(pControl->getControlType())
+	{
+	case UIControl::eButton:
+	case UIControl::eButtonList:
+	case UIControl::eCheckBox:
+	case UIControl::eSlider:
+	case UIControl::eTextInput:
+	case UIControl::eTexturePackList:
+	case UIControl::eDynamicLabel:
+	case UIControl::eHTMLLabel:
+	case UIControl::eLeaderboardList:
+	case UIControl::eTouchControl:
+		return true;
+	}
+	return false;
+}
+
+// x/y are in the scene's movie coordinate space, as are the control bounds.
+bool UIController::PointerHitsControl(UIControl *pControl, S32 iOffsetX, S32 iOffsetY, S32 x, S32 y)
+{
+	S32 iWidth  = pControl->getWidth();
+	S32 iHeight = pControl->getHeight();
+
+	// Three control types lie about their extents, for the same reasons the
+	// Vita touchbox builder has to special-case them: a slider is masked rather
+	// than scaled, and the two label types resize with their content.
+	if(pControl->getControlType() == UIControl::eSlider)
+	{
+		iWidth = ((UIControl_Slider *)pControl)->GetRealWidth();
+	}
+	else if(pControl->getControlType() == UIControl::eTexturePackList)
+	{
+		iHeight = ((UIControl_TexturePackList *)pControl)->GetRealHeight();
+	}
+	else if(pControl->getControlType() == UIControl::eDynamicLabel)
+	{
+		iWidth  = ((UIControl_DynamicLabel *)pControl)->GetRealWidth();
+		iHeight = ((UIControl_DynamicLabel *)pControl)->GetRealHeight();
+	}
+	else if(pControl->getControlType() == UIControl::eHTMLLabel)
+	{
+		iWidth  = ((UIControl_HTMLLabel *)pControl)->GetRealWidth();
+		iHeight = ((UIControl_HTMLLabel *)pControl)->GetRealHeight();
+	}
+
+	if(iWidth <= 0 || iHeight <= 0) return false;
+
+	const S32 x1 = pControl->getXPos() + iOffsetX;
+	const S32 y1 = pControl->getYPos() + iOffsetY;
+
+	return (x >= x1) && (x <= x1 + iWidth) && (y >= y1) && (y <= y1 + iHeight);
+}
+
+// Move a slider to where the pointer is along it. The relative position is what
+// the Flash side wants (SetRelativeSliderPos), and it is also what makes this
+// independent of how many steps the slider happens to have - ActionScript
+// quantises it and calls handleSliderMove back, exactly as it does for the Vita
+// touchscreen.
+void UIController::DragSliderToPointer(UIControl_Slider *pSlider, S32 iOffsetX, S32 x)
+{
+	// The slider may have been moved by Flash since the drag started.
+	pSlider->UpdateControl();
+
+	// Sliders are masked rather than scaled, so the drawn width is not getWidth().
+	const S32 iWidth = pSlider->GetRealWidth();
+	if(iWidth <= 0) return;
+
+	float fPos = ((float)x - (float)(pSlider->getXPos() + iOffsetX)) / (float)iWidth;
+
+	// Clamped so that dragging past either end pins the slider there instead of
+	// asking ActionScript for an out-of-range value.
+	if(fPos < 0.0f)			fPos = 0.0f;
+	else if(fPos > 1.0f)	fPos = 1.0f;
+
+	pSlider->SetSliderTouchPos(fPos);
+}
+
+void UIController::TickMousePointer()
+{
+	int iPad = ProfileManager.GetPrimaryPad();
+	if(iPad < 0 || iPad >= XUSER_MAX_COUNT) iPad = 0;
+
+	// Fullscreen group first, then this pad's own group. Same precedence the
+	// key path uses when it dispatches.
+	UIScene *pScene = m_groups[(int)eUIGroup_Fullscreen]->getCurrentScene();
+	if(pScene == NULL) pScene = m_groups[(iPad + 1)]->getCurrentScene();
+
+	// Decide what the cursor should be doing before anything else, so the mode
+	// is right even on the ticks where we then bail out below.
+	const bool bMenu		= GetMenuDisplayed(iPad);
+	const bool bOwnPointer	= (pScene != NULL) && pScene->hasOwnPointer();
+	Win64Input::UpdatePointerMode(bMenu, bOwnPointer);
+
+	if(!Win64Input::IsPointerActive() || pScene == NULL || !pScene->canHandleInput())
+	{
+		m_pMouseHoverControl = NULL;
+		m_pMouseHoverScene = NULL;
+		return;
+	}
+
+	// A container menu runs its own pointer, in movie space, hit-testing item
+	// slots that are not UIControls - see
+	// IUIScene_AbstractContainerMenu::onMouseTick. Stay out of its way.
+	if(bOwnPointer)
+	{
+		m_pMouseHoverControl = NULL;
+		m_pMouseHoverScene = NULL;
+		return;
+	}
+
+	// Slider dragging is the one thing here that needs the left button as a
+	// button rather than as ACTION_MENU_A: it is a press, a stream of positions
+	// and a release, and only the control that was under the press matters.
+	const bool bLeftDown	= Win64Input::IsMouseButtonDown(0);
+	const bool bLeftPressed	= Win64Input::MouseButtonWentDown(0);
+
+	// A drag ends with the button, wherever the cursor happens to be.
+	if(!bLeftDown) m_pMouseSliderControl = NULL;
+
+	// Only chase the mouse on ticks it moved. Otherwise a stationary cursor
+	// left over some button would drag focus back every tick and make the pad
+	// and the arrow keys unusable. The tick a click lands on counts too, so
+	// that clicking a slider without moving still jumps it to the cursor.
+	const bool bPointerMoved = Win64Input::ConsumePointerMoved();
+	if(!bPointerMoved && !bLeftPressed) return;
+
+	float fPointerX = 0.0f, fPointerY = 0.0f;
+	if(!Win64Input::GetPointerPos(fPointerX, fPointerY)) return;
+
+	int iClientW = 0, iClientH = 0;
+	if(!Win64Input::GetClientSize(iClientW, iClientH)) return;
+
+	if(pScene != m_pMouseHoverScene)
+	{
+		// Never compare a control pointer across scenes; the old scene may
+		// already be on the delete list.
+		m_pMouseHoverControl = NULL;
+		m_pMouseSliderControl = NULL;
+		m_pMouseHoverScene = pScene;
+	}
+
+	// Client pixels -> the scene's authored coordinate space. This assumes the
+	// scene fills the window, which is true for everything a keyboard and mouse
+	// player sees - splitscreen guests are on pads and are not pointed at.
+	const int iMovieW = pScene->getMovieWidth();
+	const int iMovieH = pScene->getMovieHeight();
+	if(iMovieW <= 0 || iMovieH <= 0) return;
+
+	const S32 x = (S32)(fPointerX * (float)iMovieW / (float)iClientW);
+	const S32 y = (S32)(fPointerY * (float)iMovieH / (float)iClientH);
+
+	// Controls that live inside the scene's main panel are positioned relative
+	// to it, so the panel's own position is an offset on their bounds.
+	S32 iOffsetX = 0, iOffsetY = 0;
+	UIControl *pMainPanel = pScene->GetMainPanel();
+	if(pMainPanel != NULL)
+	{
+		pMainPanel->UpdateControl();
+		iOffsetX = pMainPanel->getXPos();
+		iOffsetY = pMainPanel->getYPos();
+	}
+
+	// A drag in progress owns the pointer until the button comes up. The
+	// hit-test is deliberately not repeated for it: once a slider has been
+	// grabbed, dragging above or below it should still move it, which is how
+	// every other slider the player has ever used behaves.
+	if(m_pMouseSliderControl != NULL)
+	{
+		DragSliderToPointer((UIControl_Slider *)m_pMouseSliderControl, iOffsetX, x);
+		return;
+	}
+
+	UIControl *pHit = NULL;
+
+	AUTO_VAR(itEnd, pScene->GetControls()->end());
+	for(AUTO_VAR(it, pScene->GetControls()->begin()); it != itEnd; ++it)
+	{
+		UIControl *pControl = (UIControl *)*it;
+		if(!IsPointerFocusable(pControl)) continue;
+
+		// Bounds are only true for the frame they were read on - Flash moves
+		// controls around as menus slide and resize.
+		pControl->UpdateControl();
+
+		if(PointerHitsControl(pControl, iOffsetX, iOffsetY, x, y))
+		{
+			pHit = pControl;
+			break;
+		}
+	}
+
+	if(pHit == NULL)
+	{
+		// Off every control. Focus is left where it was rather than cleared:
+		// these menus always have something focused, and a menu with nothing
+		// focused cannot be driven by the pad any more either.
+		m_pMouseHoverControl = NULL;
+		return;
+	}
+
+	if(pHit->getControlType() == UIControl::eSlider)
+	{
+		// Focus first, so the value change lands on a slider the menu agrees is
+		// the current one, then jump it to the click and start dragging.
+		if(pHit != m_pMouseHoverControl)
+		{
+			m_pMouseHoverControl = pHit;
+			pScene->SetFocusToElement(pHit->getId());
+		}
+
+		if(bLeftPressed)
+		{
+			m_pMouseSliderControl = pHit;
+			DragSliderToPointer((UIControl_Slider *)pHit, iOffsetX, x);
+		}
+		return;
+	}
+
+	if(pHit->getControlType() == UIControl::eButtonList)
+	{
+		// One control, many rows. ActionScript resolves the hit a second time
+		// inside the list, so this is sent on every move, not only on entry.
+		UIControl_ButtonList *pButtonList = (UIControl_ButtonList *)pHit;
+		pButtonList->SetTouchFocus(x, y, false);
+		m_pMouseHoverControl = pHit;
+		return;
+	}
+
+	if(pHit == m_pMouseHoverControl) return;
+
+	m_pMouseHoverControl = pHit;
+	pScene->SetFocusToElement(pHit->getId());
+}
+
+#endif // _UI_MOUSE_POINTER
 
 rrbool RADLINK UIController::ExternalFunctionCallback( void * user_callback_data , Iggy * player , IggyExternalFunctionCallUTF16 * call)
 {
@@ -3012,4 +3300,30 @@ void UIController::SendTouchInput(unsigned int iPad, unsigned int key, bool bPre
 }
 
 
+#endif
+
+#ifdef _UI_INLINE_TEXT_ENTRY
+UIScene *UIController::GetActiveScene(int iPad)
+{
+	if(iPad < 0 || iPad >= XUSER_MAX_COUNT) iPad = 0;
+
+	UIScene *pScene = m_groups[(int)eUIGroup_Fullscreen]->getCurrentScene();
+	if(pScene == NULL) pScene = m_groups[(iPad + 1)]->getCurrentScene();
+
+	return pScene;
+}
+
+bool UIController::IsSceneLive(UIScene *pScene)
+{
+	if(pScene == NULL) return false;
+
+	if(m_groups[(int)eUIGroup_Fullscreen]->getCurrentScene() == pScene) return true;
+
+	for(int i = 0; i < XUSER_MAX_COUNT; ++i)
+	{
+		if(m_groups[(i + 1)]->getCurrentScene() == pScene) return true;
+	}
+
+	return false;
+}
 #endif

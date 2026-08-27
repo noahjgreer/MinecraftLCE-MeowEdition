@@ -10,6 +10,7 @@ class UITTFFont;
 class UIComponent_DebugUIConsole;
 class UIComponent_DebugUIMarketingGuide;
 class UIControl;
+class UIControl_Slider;
 
 // Base class for all shared functions between UIControllers
 class UIController : public IUIController
@@ -144,6 +145,51 @@ private:
 
 public:
 	UIController();
+
+#ifdef _UI_MOUSE_POINTER
+	// 4J Meow - mouse pointer support for the Iggy menus.
+	//
+	// Runs once a tick from handleInput. It decides what the OS cursor should
+	// be doing, then makes menu focus follow the pointer, so that the existing
+	// A/B/X key path activates whatever the mouse is over. Clicking is
+	// deliberately NOT synthesised here: the mouse buttons are bound to the
+	// menu actions in Win64KeyboardMouse.cpp and travel the ordinary input
+	// path, which means every scene handles a click exactly as it handles the
+	// pad, with no second code path to keep in step.
+	void TickMousePointer();
+
+private:
+	// Only used to avoid re-issuing SetFocus for a pointer that has not left
+	// the control it was already on. Compared by pointer, never dereferenced
+	// after the scene it came from could have gone away - hence the scene is
+	// remembered alongside it and both are dropped together.
+	UIControl	*m_pMouseHoverControl;
+	UIScene		*m_pMouseHoverScene;
+
+	// The slider the left button was pressed on, NULL when nothing is being
+	// dragged. Held separately from the hover control because a drag deliberately
+	// survives the pointer leaving the slider's bounds.
+	UIControl	*m_pMouseSliderControl;
+
+	bool		PointerHitsControl(UIControl *pControl, S32 iOffsetX, S32 iOffsetY, S32 x, S32 y);
+	void		DragSliderToPointer(UIControl_Slider *pSlider, S32 iOffsetX, S32 x);
+	static bool	IsPointerFocusable(UIControl *pControl);
+public:
+#endif
+
+#ifdef _UI_INLINE_TEXT_ENTRY
+	// 4J Meow - in-place text entry. See UITextEdit.h.
+	//
+	// The scene a text field would belong to, using the same precedence the key
+	// dispatch uses: the fullscreen group first, then this pad's own group.
+	UIScene *GetActiveScene(int iPad);
+
+	// Whether a scene is still the one being driven. A scene that has been
+	// navigated away from, or buried under a message box, is not - and an edit
+	// session on it has to be dropped before it touches a dead movie.
+	bool IsSceneLive(UIScene *pScene);
+#endif
+
 #ifdef __PSVITA__
 	void TouchBoxAdd(UIControl *pControl,UIScene *pUIScene);
 	bool TouchBoxHit(UIScene *pUIScene,S32 x, S32 y);

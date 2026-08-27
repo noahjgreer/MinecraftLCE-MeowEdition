@@ -50,11 +50,21 @@ protected:
 	virtual bool isSlotEmpty(ESceneSection eSection, int iSlot);
 	virtual void adjustPointerForSafeZone();
 
+#ifdef _UI_MOUSE_POINTER
+	// Puts m_pointerPos where the mouse is, in movie coordinates, and raises
+	// m_bPointerFromMouse for onMouseTick. See the comment on the definition.
+	void UpdatePointerFromMouse();
+#endif
+
 	virtual UIControl *getSection(ESceneSection eSection) { return NULL; }
 
 public:
 	virtual void tick();
-	
+
+#ifdef _UI_POINTER_SUPPORT
+	virtual bool hasOwnPointer() { return true; }
+#endif
+
 	virtual void render(S32 width, S32 height, C4JRender::eViewportType viewpBort);
 	virtual void customDraw(IggyCustomDrawCallbackRegion *region);
 

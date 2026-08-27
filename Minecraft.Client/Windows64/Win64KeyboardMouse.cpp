@@ -4,6 +4,7 @@
 
 #include "Win64KeyboardMouse.h"
 #include "../Common/App_enums.h"
+#include "../Common/UI/UITextEdit.h"
 
 C_Win64Input Win64InputManager;
 
@@ -90,6 +91,16 @@ namespace
 	bool	s_captured		= false;
 	HWND	s_hWnd			= NULL;
 
+	// Pointer state. s_captured stays the player's *intent* to be in mouse-look
+	// (F12, or having touched the keyboard); s_mode is what that intent plus the
+	// current menu state actually resolves to.
+	Win64Input::EPointerMode s_mode = Win64Input::ePointerMode_Look;
+
+	float	s_pointerX		= 0.0f;			// client pixels
+	float	s_pointerY		= 0.0f;
+	bool	s_pointerValid	= false;
+	bool	s_pointerMoved	= false;
+
 	void MarkInUse()
 	{
 		s_inUse = true;
@@ -112,6 +123,18 @@ namespace
 
 	// True on the tick the key goes down, and then again on each repeat tick
 	// once it has been held past the delay.
+	// Text entry ownership of the keyboard. s_textInput is the live flag;
+	// s_textInputTick keeps it effective for the rest of the tick it is cleared
+	// on, so the Return that commits a field is not then read as a button press
+	// by the same tick's input pass.
+	bool s_textInput		= false;
+	bool s_textInputTick	= false;
+
+	bool TextInputOwnsKeyboard()
+	{
+		return s_textInput || s_textInputTick;
+	}
+
 	bool KeyRepeated(int vk)
 	{
 		if (vk < 0 || vk >= KEY_STATE_COUNT) return false;
@@ -197,6 +220,47 @@ namespace
 		return false;
 	}
 
+	// Mouse buttons as menu actions.
+	//
+	// Kept out of s_bindings because they are conditional in a way a static
+	// table cannot express: they only apply while a menu is actually up (so a
+	// click in gameplay is a swing, not a menu confirm), and what the right
+	// button means depends on which kind of menu it is.
+	//
+	// In a container menu the mapping is Java Edition's: left click takes or
+	// places the whole stack (LCE's A), right click splits or places one (LCE's
+	// X). Everywhere else the right button is "back", which is what a mouse
+	// user expects and what LCE's B does.
+	//
+	// What the UI last told us was on screen, set by UpdatePointerMode. Cached
+	// so that the pointer mode can also be recomputed from a capture or focus
+	// change, not only on the tick UpdatePointerMode runs on.
+	bool	s_menuUp		= false;
+	bool	s_containerUp	= false;
+
+	int MouseKeyForMenuAction(int iAction)
+	{
+		if (!s_menuUp) return 0;
+
+		switch (iAction)
+		{
+		case ACTION_MENU_A:
+		case ACTION_MENU_OK:
+			return VK_MOUSE_LEFT;
+
+		case ACTION_MENU_X:
+			return s_containerUp ? VK_MOUSE_RIGHT : 0;
+
+		case ACTION_MENU_Y:
+			return s_containerUp ? VK_MOUSE_MIDDLE : 0;
+
+		case ACTION_MENU_B:
+		case ACTION_MENU_CANCEL:
+			return s_containerUp ? 0 : VK_MOUSE_RIGHT;
+		}
+		return 0;
+	}
+
 	const SActionBinding *FindBinding(int iAction)
 	{
 		for (int i = 0; i < BINDING_COUNT; i++)
@@ -249,22 +313,110 @@ namespace
 		SetCursorPos(iCentreX, iCentreY);
 	}
 
-	void ApplyCapture()
+	// Seed the tracked pointer position from wherever the OS cursor is right
+	// now. Called when entering a pointer mode, so the first frame of a menu
+	// already has a sensible position instead of waiting for the player to
+	// nudge the mouse before anything can be hovered.
+	void SeedPointerFromCursor()
 	{
 		if (s_hWnd == NULL) return;
 
-		if (s_captured && s_hasFocus)
-		{
-			RECT rc;
-			if (GetClientRectOnScreen(rc)) ClipCursor(&rc);
-			PinCursorToCentre();
-			while (ShowCursor(FALSE) >= 0) {}
-		}
-		else
+		POINT pt;
+		if (!GetCursorPos(&pt)) return;
+		if (!ScreenToClient(s_hWnd, &pt)) return;
+
+		s_pointerX = (float)pt.x;
+		s_pointerY = (float)pt.y;
+		s_pointerValid = true;
+	}
+
+	void ApplyPointerMode()
+	{
+		if (s_hWnd == NULL) return;
+
+		if (!s_hasFocus)
 		{
 			ClipCursor(NULL);
 			while (ShowCursor(TRUE) < 0) {}
+			return;
 		}
+
+		switch (s_mode)
+		{
+		case Win64Input::ePointerMode_Look:
+			{
+				RECT rc;
+				if (GetClientRectOnScreen(rc)) ClipCursor(&rc);
+				PinCursorToCentre();
+				while (ShowCursor(FALSE) >= 0) {}
+			}
+			break;
+
+		case Win64Input::ePointerMode_HiddenCursor:
+			{
+				// Free to move, but still clipped: an invisible cursor that can
+				// wander onto another monitor is a cursor whose next click
+				// lands in someone else's window.
+				RECT rc;
+				if (GetClientRectOnScreen(rc)) ClipCursor(&rc);
+				while (ShowCursor(FALSE) >= 0) {}
+			}
+			break;
+
+		case Win64Input::ePointerMode_MenuCursor:
+			ClipCursor(NULL);
+			while (ShowCursor(TRUE) < 0) {}
+			break;
+		}
+	}
+
+	// The whole pointer policy, in one place.
+	//
+	// Not captured at all (the player pressed F12, or has not touched the
+	// keyboard yet) means the cursor belongs to the desktop and we leave it
+	// alone. Otherwise a container menu draws its own pointer, any other menu
+	// wants a real arrow, and gameplay wants mouse-look.
+	void RecomputeMode()
+	{
+		Win64Input::EPointerMode eNew;
+
+		if (!s_captured)			eNew = Win64Input::ePointerMode_MenuCursor;
+		else if (s_containerUp)		eNew = Win64Input::ePointerMode_HiddenCursor;
+		else if (s_menuUp)			eNew = Win64Input::ePointerMode_MenuCursor;
+		else						eNew = Win64Input::ePointerMode_Look;
+
+		if (eNew == s_mode)
+		{
+			ApplyPointerMode();
+			return;
+		}
+
+		const bool bWasLook = (s_mode == Win64Input::ePointerMode_Look);
+		s_mode = eNew;
+		ApplyPointerMode();
+
+		// Coming out of look, the cursor was parked on the window centre, so
+		// that is where the pointer starts. Take the position from the OS
+		// rather than assuming, since ClipCursor may have moved it.
+		if (bWasLook && eNew != Win64Input::ePointerMode_Look)
+		{
+			SeedPointerFromCursor();
+			s_pointerMoved = true;
+		}
+
+		// Going into look, any stale look delta accumulated while the pointer
+		// was free would be applied as one large jerk on the first frame.
+		if (eNew == Win64Input::ePointerMode_Look)
+		{
+			s_mouseAccumX = s_mouseAccumY = 0.0f;
+		}
+	}
+
+	// Kept as the old name for the call sites that only care about focus and
+	// capture changes; the mode has to be re-derived from those too.
+	void ApplyCapture()
+	{
+		RecomputeMode();
 	}
 }
 
@@ -371,6 +523,24 @@ namespace Win64Input
 		LeaveCriticalSection(&s_typedLock);
 	}
 
+	void SetTextInputActive(bool bActive)
+	{
+		s_textInput = bActive;
+
+		// Setting takes effect immediately; clearing waits for the next Tick.
+		if (bActive) s_textInputTick = true;
+	}
+
+	bool IsTextInputActive()
+	{
+		return s_textInput;
+	}
+
+	bool EditKeyRepeated(int iVirtualKey)
+	{
+		return KeyRepeated(iVirtualKey);
+	}
+
 	void OnMouseButton(int iButton, bool bDown)
 	{
 		if (iButton < 0 || iButton >= MOUSE_BUTTON_COUNT) return;
@@ -391,7 +561,10 @@ namespace Win64Input
 
 	void OnRawMouseMove(int iDeltaX, int iDeltaY)
 	{
-		if (!s_captured) return;
+		// Raw motion is only ever look. In a pointer mode the position comes
+		// from WM_MOUSEMOVE instead, so that the OS's own acceleration and
+		// screen clamping apply exactly once.
+		if (!s_captured || s_mode != ePointerMode_Look) return;
 		s_mouseAccumX += (float)iDeltaX;
 		s_mouseAccumY += (float)iDeltaY;
 		if (iDeltaX != 0 || iDeltaY != 0) MarkInUse();
@@ -433,9 +606,99 @@ namespace Win64Input
 		return s_menuDisplayed[iPad];
 	}
 
+	void OnMouseMove(int iClientX, int iClientY)
+	{
+		if (s_mode == ePointerMode_Look) return;
+
+		const float fX = (float)iClientX;
+		const float fY = (float)iClientY;
+
+		if (!s_pointerValid || fX != s_pointerX || fY != s_pointerY)
+		{
+			s_pointerX = fX;
+			s_pointerY = fY;
+			s_pointerValid = true;
+			s_pointerMoved = true;
+			MarkInUse();
+		}
+	}
+
+	bool GetPointerPos(float &fX, float &fY)
+	{
+		fX = s_pointerX;
+		fY = s_pointerY;
+		return s_pointerValid;
+	}
+
+	bool GetClientSize(int &iWidth, int &iHeight)
+	{
+		RECT rc;
+		if (s_hWnd == NULL || !GetClientRect(s_hWnd, &rc)) return false;
+		iWidth  = rc.right  - rc.left;
+		iHeight = rc.bottom - rc.top;
+		return (iWidth > 0 && iHeight > 0);
+	}
+
+	bool ConsumePointerMoved()
+	{
+		const bool bMoved = s_pointerMoved;
+		s_pointerMoved = false;
+		return bMoved;
+	}
+
+	// The mouse buttons are otherwise only ever read through the action
+	// mapping, which is right for anything a pad can also do. A slider drag is
+	// not one of those things - it is a press, a position and a release, and the
+	// position only means anything to the control that was under the cursor when
+	// the press happened. So the UI reads the button directly.
+	// See UIController::TickMousePointer.
+	bool IsMouseButtonDown(int iButton)
+	{
+		if (iButton < 0 || iButton >= MOUSE_BUTTON_COUNT) return false;
+		return KeyHeld(VKEY_COUNT + iButton);
+	}
+
+	bool MouseButtonWentDown(int iButton)
+	{
+		if (iButton < 0 || iButton >= MOUSE_BUTTON_COUNT) return false;
+		return KeyWentDown(VKEY_COUNT + iButton);
+	}
+
+	void UpdatePointerMode(bool bMenuDisplayed, bool bSceneDrawsPointer)
+	{
+		s_menuUp		= bMenuDisplayed;
+		s_containerUp	= bMenuDisplayed && bSceneDrawsPointer;
+		RecomputeMode();
+	}
+
+	bool GetHotbarSlot(int &iSlot)
+	{
+		// A number typed into a text field is text, not a hotbar slot.
+		if (TextInputOwnsKeyboard()) return false;
+
+		// The number row and the numpad both select a hotbar slot directly. This
+		// is a separate path from the wheel because it is an absolute selection
+		// rather than a relative step, so it cannot go through swapPaint.
+		//
+		// An edge query against the per-tick snapshot, so it is idempotent within
+		// a tick and cannot fire twice for one keypress.
+		for (int i = 0; i < 9; i++)
+		{
+			if (KeyWentDown('1' + i) || KeyWentDown(VK_NUMPAD1 + i))
+			{
+				iSlot = i;
+				return true;
+			}
+		}
+		return false;
+	}
+
+	EPointerMode GetPointerMode()	{ return s_mode; }
+	bool IsPointerActive()			{ return s_inUse && s_mode != ePointerMode_Look; }
+
 	bool InUse()				{ return s_inUse; }
-	bool IsCaptured()			{ return s_captured; }
-	bool WantsHiddenCursor()	{ return s_captured && s_hasFocus; }
+	bool IsCaptured()			{ return s_captured && s_mode == ePointerMode_Look; }
+	bool WantsHiddenCursor()	{ return s_hasFocus && s_mode != ePointerMode_MenuCursor; }
 
 	void SetCaptured(bool bCapture)
 	{
@@ -472,13 +735,17 @@ void C_Win64Input::Tick(void)
 	// Note: mouse motion is NOT consumed here. It is drained once per frame by
 	// Win64Input::ConsumeLookDelta - see Win64ApplyMouseLook in Minecraft.cpp.
 
+	// Carry the text-entry flag forward one tick past being cleared - see
+	// TextInputOwnsKeyboard.
+	s_textInputTick = s_textInput;
+
 	if (s_wheelUpTicks   > 0) s_wheelUpTicks--;
 	if (s_wheelDownTicks > 0) s_wheelDownTicks--;
 
 	// Keep the cursor on the window centre while we are driving mouse-look.
 	// Done here rather than only on capture and focus changes because the
 	// things that break the cursor clip do not send us a message.
-	if (s_captured && s_hasFocus) PinCursorToCentre();
+	if (s_captured && s_hasFocus && s_mode == Win64Input::ePointerMode_Look) PinCursorToCentre();
 }
 
 // The action-value query.
@@ -497,7 +764,7 @@ unsigned int C_Win64Input::GetValue(int iPad, unsigned char ucAction, bool bRepe
 	unsigned int uiPad = C_4JInput::GetValue(iPad, ucAction, bRepeat);
 	if (uiPad > 0) return uiPad;
 
-	if (iPad != 0 || !s_inUse) return 0;
+	if (iPad != 0 || !s_inUse || TextInputOwnsKeyboard()) return 0;
 
 	int iWheelTicks = 0;
 	if (ActionHasWheel(ucAction, iWheelTicks))
@@ -508,6 +775,9 @@ unsigned int C_Win64Input::GetValue(int iPad, unsigned char ucAction, bool bRepe
 		const bool bActive = bRepeat ? (iWheelTicks == WHEEL_HOLD_TICKS) : (iWheelTicks > 0);
 		return bActive ? ACTION_VALUE_ON : 0;
 	}
+
+	const int iMouseKey = MouseKeyForMenuAction(ucAction);
+	if (iMouseKey != 0 && (bRepeat ? KeyRepeated(iMouseKey) : KeyHeld(iMouseKey))) return ACTION_VALUE_ON;
 
 	const SActionBinding *pBinding = FindBinding(ucAction);
 	if (pBinding == NULL) return 0;
@@ -527,13 +797,16 @@ bool C_Win64Input::ButtonPressed(int iPad, unsigned char ucAction)
 	if (C_4JInput::ButtonPressed(iPad, ucAction)) return true;
 
 	// Keyboard drives player 1 only. Splitscreen guests stay on pads.
-	if (iPad != 0 || !s_inUse) return false;
+	if (iPad != 0 || !s_inUse || TextInputOwnsKeyboard()) return false;
 
 	int iWheelTicks = 0;
 	if (ActionHasWheel(ucAction, iWheelTicks))
 	{
 		return iWheelTicks == WHEEL_HOLD_TICKS;	// only the notch's first tick
 	}
+
+	const int iMouseKey = MouseKeyForMenuAction(ucAction);
+	if (iMouseKey != 0 && KeyWentDown(iMouseKey)) return true;
 
 	const SActionBinding *pBinding = FindBinding(ucAction);
 	if (pBinding == NULL) return false;
@@ -549,7 +822,10 @@ bool C_Win64Input::ButtonReleased(int iPad, unsigned char ucAction)
 {
 	if (C_4JInput::ButtonReleased(iPad, ucAction)) return true;
 
-	if (iPad != 0 || !s_inUse) return false;
+	if (iPad != 0 || !s_inUse || TextInputOwnsKeyboard()) return false;
+
+	const int iMouseKey = MouseKeyForMenuAction(ucAction);
+	if (iMouseKey != 0 && KeyWentUp(iMouseKey)) return true;
 
 	const SActionBinding *pBinding = FindBinding(ucAction);
 	if (pBinding == NULL) return false;
@@ -565,13 +841,16 @@ bool C_Win64Input::ButtonDown(int iPad, unsigned char ucAction)
 {
 	if (C_4JInput::ButtonDown(iPad, ucAction)) return true;
 
-	if (iPad != 0 || !s_inUse) return false;
+	if (iPad != 0 || !s_inUse || TextInputOwnsKeyboard()) return false;
 
 	int iWheelTicks = 0;
 	if (ActionHasWheel(ucAction, iWheelTicks))
 	{
 		return iWheelTicks > 0;
 	}
+
+	const int iMouseKey = MouseKeyForMenuAction(ucAction);
+	if (iMouseKey != 0 && KeyHeld(iMouseKey)) return true;
 
 	const SActionBinding *pBinding = FindBinding(ucAction);
 	if (pBinding == NULL) return false;
@@ -586,7 +865,7 @@ bool C_Win64Input::ButtonDown(int iPad, unsigned char ucAction)
 float C_Win64Input::GetJoypadStick_LX(int iPad, bool bCheckMenuDisplay)
 {
 	float fPad = C_4JInput::GetJoypadStick_LX(iPad, bCheckMenuDisplay);
-	if (iPad != 0 || !s_inUse || fPad != 0.0f) return fPad;
+	if (iPad != 0 || !s_inUse || fPad != 0.0f || TextInputOwnsKeyboard()) return fPad;
 
 	float fVal = 0.0f;
 	if (KeyHeld('D')) fVal += 1.0f;
@@ -597,7 +876,7 @@ float C_Win64Input::GetJoypadStick_LX(int iPad, bool bCheckMenuDisplay)
 float C_Win64Input::GetJoypadStick_LY(int iPad, bool bCheckMenuDisplay)
 {
 	float fPad = C_4JInput::GetJoypadStick_LY(iPad, bCheckMenuDisplay);
-	if (iPad != 0 || !s_inUse || fPad != 0.0f) return fPad;
+	if (iPad != 0 || !s_inUse || fPad != 0.0f || TextInputOwnsKeyboard()) return fPad;
 
 	float fVal = 0.0f;
 	if (KeyHeld('W')) fVal += 1.0f;
@@ -632,6 +911,37 @@ bool C_Win64Input::IsPadConnected(int iPad)
 {
 	if (iPad == 0 && s_inUse) return true;
 	return C_4JInput::IsPadConnected(iPad);
+}
+
+// ---------------------------------------------------------------------------
+// Text entry
+//
+// The library's RequestKeyboard is the console on-screen keyboard and has no PC
+// implementation, so calling through to it does nothing at all - which is
+// exactly what every text field in the game did on Windows. Handing the request
+// to UITextEditor instead is what makes those fields typeable, without touching
+// any of the call sites.
+//
+// The request is only recorded here. Deciding what to type into, and pushing
+// the in-game keyboard scene when there is no field, happens on the next UI
+// tick: RequestKeyboard is called from inside an Iggy callback, which is not a
+// safe place to alter the scene stack from.
+// ---------------------------------------------------------------------------
+
+EKeyboardResult C_Win64Input::RequestKeyboard(LPCWSTR Title, LPCWSTR Text, DWORD dwPad, UINT uiMaxChars,
+											  int( *Func)(LPVOID,const bool), LPVOID lpParam,
+											  C_4JInput::EKeyboardMode eMode)
+{
+	g_UITextEdit.Request(Title, Text, (int)dwPad, (int)uiMaxChars, Func, lpParam, eMode);
+
+	// Pending, not accepted: the callback fires later, which is the contract
+	// every caller was already written against.
+	return EKeyboard_Pending;
+}
+
+void C_Win64Input::GetText(uint16_t *UTF16String)
+{
+	g_UITextEdit.GetResult(UTF16String);
 }
 
 #endif // _WINDOWS64

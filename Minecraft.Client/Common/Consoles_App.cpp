@@ -2,6 +2,7 @@
 #include "stdafx.h"
 #ifdef _WINDOWS64
 #include "..\Windows64\Win64DedicatedServer.h"
+#include "..\Windows64\Win64ProfileStore.h"
 #endif
 
 #include "..\..\Minecraft.World\Recipy.h"
@@ -684,7 +685,13 @@ void CMinecraftApp::InitGameSettings()
 		C_4JProfile::PROFILESETTINGS *pProfileSettings=ProfileManager.GetDashboardProfileSettings(i);
 		// clear this for now - it will come from reading the system values
 		memset(pProfileSettings,0,sizeof(C_4JProfile::PROFILESETTINGS));
-		SetDefaultOptions(pProfileSettings,i);
+		// 4J Meow - SetDefaultOptions writes defaults straight into the game
+		// settings blob, which on x64 has just been restored from profile.dat.
+		// Only default a pad that had nothing saved for it.
+		if(!Win64ProfileStore::HasSavedProfile(i))
+		{
+			SetDefaultOptions(pProfileSettings,i);
+		}
 #elif defined __PS3__ || defined __ORBIS__ || defined _DURANGO  || defined __PSVITA__
 		C4JStorage::PROFILESETTINGS *pProfileSettings=StorageManager.GetDashboardProfileSettings(i);
 		// 4J-PB - don't cause an options write to happen here

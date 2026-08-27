@@ -34,8 +34,12 @@ namespace Win64DedicatedServer
 	bool Start();
 
 	// Per-frame housekeeping: the periodic status line, and acting on a pending
-	// Ctrl+C.
+	// Ctrl+C or "stop" command.
 	void Tick();
+
+	// Asks the server to save and stop. Safe to call from any thread - it only
+	// sets a flag, and Tick() does the work on the game thread.
+	void RequestStop();
 
 	// Halts the server so it saves, and waits for it to finish.
 	void Shutdown();

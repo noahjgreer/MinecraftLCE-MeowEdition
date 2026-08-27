@@ -27,6 +27,7 @@
 #include "..\..\Minecraft.World\ThreadName.h"
 #include "..\..\Minecraft.Client\StatsCounter.h"
 #include "..\ConnectScreen.h"
+#include "..\Common\Audio\SoundEngine.h"		// 4J Meow - SoundEngine::s_bDisabled
 //#include "Social\SocialManager.h"
 //#include "Leaderboards\LeaderboardManager.h"
 //#include "XUI\XUI_Scene_Container.h"
@@ -361,6 +362,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_RBUTTONUP:		Win64Input::OnMouseButton(1, false);	break;
 	case WM_MBUTTONDOWN:	Win64Input::OnMouseButton(2, true);	break;
 	case WM_MBUTTONUP:		Win64Input::OnMouseButton(2, false);	break;
+	case WM_MOUSEMOVE:
+		// Absolute pointer position for menus. Ignored while mouse-look owns
+		// the cursor, where the position is meaningless because we park it.
+		Win64Input::OnMouseMove((short)LOWORD(lParam), (short)HIWORD(lParam));
+		break;
 	case WM_MOUSEWHEEL:
 		Win64Input::OnMouseWheel(GET_WHEEL_DELTA_WPARAM(wParam));
 		break;
@@ -753,10 +759,18 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	// 4J Meow - dedicated server: console up before anything logs, and no game
 	// window. D3D still initialises against the hidden window, which costs
 	// nothing - with no local player GameRenderer::render never runs anyway.
-	if (Win64DedicatedServer::IsEnabled())
+	const bool bDedicated = Win64DedicatedServer::IsEnabled();
+
+	if (bDedicated)
 	{
 		Win64DedicatedServer::Initialise();
 		nCmdShow = SW_HIDE;
+
+		// 4J Meow - a dedicated server has nobody to hear anything. Miles is
+		// started from the Minecraft constructor, long before anything else gets
+		// a say, so the switch has to be thrown here. Without it the server
+		// loaded the soundbanks and sat playing the main-menu music to itself.
+		SoundEngine::s_bDisabled = true;
 	}
 
 	if(lpCmdLine)
@@ -858,7 +872,16 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	RenderManager.Initialise(g_pd3dDevice, g_pSwapChain);
 	
 	app.loadStringTable();
-	ui.init(g_pd3dDevice,g_pImmediateContext,g_pRenderTargetView,g_pDepthStencilView,g_iScreenWidth,g_iScreenHeight);
+
+	// 4J Meow - the dedicated server has no UI. This matters beyond saving the
+	// work: UIController::init ends with NavigateToScene(0, eUIScene_Intro), so
+	// calling it left a full intro-then-main-menu scene stack running behind the
+	// hidden window for the entire life of the server - which is what was asking
+	// for the menu music. Everything below that touches "ui" is gated to match.
+	if (!bDedicated)
+	{
+		ui.init(g_pd3dDevice,g_pImmediateContext,g_pRenderTargetView,g_pDepthStencilView,g_iScreenWidth,g_iScreenHeight);
+	}
 
 	////////////////
 	// Initialise //
@@ -1071,7 +1094,20 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 			DispatchMessage( &msg );
 			continue;
 		}
-		RenderManager.StartFrame();
+		// 4J Meow - a dedicated server draws nothing, so it neither starts nor
+		// presents a frame. That also removes the loop's only pacing: Present()
+		// is what used to block on VSync, and without it this spins a core flat.
+		// 20ms is a Minecraft tick; the server's own tick loop runs on its own
+		// thread, so all this loop still has to do is service the message queue,
+		// g_NetworkManager.DoWork() (the accept path) and the status line.
+		if (bDedicated)
+		{
+			Sleep(20);
+		}
+		else
+		{
+			RenderManager.StartFrame();
+		}
 #if 0
 		if(pMinecraft->soundEngine->isStreamingWavebankReady() &&
 			!pMinecraft->soundEngine->isPlayingStreamingGameMusic() &&
@@ -1132,7 +1168,18 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 
 		//		LeaderboardManager::Instance()->Tick();
 		// Render game graphics.
-		if(app.GetGameStarted())
+		// 4J Meow - run_middle() is the client's per-frame game work: autosave
+		// policy, input, and the render path. It is not what drives the server -
+		// MinecraftServer::run has its own thread and its own tick loop - and its
+		// very first branch reaches ui.IsPauseMenuDisplayed(), which faults now
+		// that the dedicated server no longer initialises the UI. Everything the
+		// server needs from this loop (the message pump, StorageManager.Tick for
+		// the save path, g_NetworkManager.DoWork for the accept path, and
+		// Win64DedicatedServer::Tick) has already happened above.
+		if(bDedicated)
+		{
+		}
+		else if(app.GetGameStarted())
 		{
 			pMinecraft->run_middle();
 			app.SetAppPaused( g_NetworkManager.IsLocalGame() && g_NetworkManager.GetPlayerCount() == 1 && ui.IsPauseMenuDisplayed(ProfileManager.GetPrimaryPad()) );
@@ -1185,8 +1232,11 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 			bDumpTextureUsage = false;
 		}
 #endif
-		ui.tick();
-		ui.render();
+		if (!bDedicated)
+		{
+			ui.tick();
+			ui.render();
+		}
 #if 0
 		app.HandleButtonPresses();
 
@@ -1227,9 +1277,11 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 		RenderManager.Set_matrixDirty();
 #endif
 		// Present the frame.
-		RenderManager.Present();
-
-		ui.CheckMenuDisplayed();
+		if (!bDedicated)
+		{
+			RenderManager.Present();
+			ui.CheckMenuDisplayed();
+		}
 #if 0
 		PIXBeginNamedEvent(0,"Profile load check");
 		// has the game defined profile data been changed (by a profile load)
@@ -1296,7 +1348,12 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 #endif
 
 		// 4J-PB - Update the trial timer display if we are in the trial version
-		if(!ProfileManager.IsFullVersion())
+		// 4J Meow - ...which needs the UI, so not on a dedicated server. Gating
+		// the whole statement, not just this branch: the else arm calls
+		// ui.ShowTrialTimer, so a bare "!bDedicated &&" here would have sent the
+		// server straight into it.
+		if(bDedicated) {}
+		else if(!ProfileManager.IsFullVersion())
 		{
 			// display the trial timer
 			if(app.GetGameStarted())
@@ -1323,6 +1380,12 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 		// A memory leak was caused because the icon renderer kept creating new Vec3's because the pool wasn't reset
 		Vec3::resetPool();
 	}
+
+	// 4J Meow - flush any settings the player changed but that never triggered
+	// a CheckGameSettingsChanged (skin/cape picks, tutorial flags), so they are
+	// in profile.dat before the process goes away.
+	app.CheckGameSettingsChanged(true);
+	ProfileManager.ForceQueuedProfileWrites();
 
 	// Free resources, unregister custom classes, and exit.
 	//	app.Uninit();

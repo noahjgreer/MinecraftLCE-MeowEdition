@@ -16,7 +16,7 @@ UIGroup::UIGroup(EUIGroup group, int iPad)
 	for(unsigned int i = 0; i < eUILayer_COUNT; ++i)
 	{
 		m_layers[i] = new UILayer(this);
-#ifdef __PSVITA__
+#ifdef _UI_POINTER_SUPPORT
 		m_layers[i]->m_iLayer=(EUILayer)i;
 #endif
 	}
@@ -206,7 +206,7 @@ bool UIGroup::HasFocus(int iPad)
 	return hasFocus;
 }
 
-#ifdef __PSVITA__
+#ifdef _UI_POINTER_SUPPORT
 UIScene *UIGroup::getCurrentScene()
 {
 	UIScene *pScene;

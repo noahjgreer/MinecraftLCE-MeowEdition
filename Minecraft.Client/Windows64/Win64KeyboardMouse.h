@@ -62,15 +62,83 @@ namespace Win64Input
 	// Typed text, fed from WM_CHAR. This is a separate path from OnKeyDown on
 	// purpose: WM_CHAR is what applies the keyboard layout, shift state and dead
 	// keys, and it delivers backspace, tab, return and escape as characters too,
-	// so a text field needs nothing else. Drained by DirectConnectScreen.
+	// so a text field needs nothing else. Drained by UITextEditor::DrainInput.
 	void OnChar(wchar_t ch);
 	bool ConsumeTypedChar(wchar_t &ch);
 	void ClearTypedChars();
+
+	// Set while a menu text field is being typed into (UITextEdit.cpp). The
+	// keyboard stops contributing to game and menu actions entirely for as long
+	// as it is set, so that typing a world name cannot also walk the player,
+	// press buttons or open the pause menu. The pad is untouched: a splitscreen
+	// guest can carry on playing while player 1 types.
+	//
+	// It stays effective for the remainder of the tick it is cleared on, so the
+	// Return that commits a field is not then also read as "press the focused
+	// button" by the same tick's input pass.
+	void SetTextInputActive(bool bActive);
+	bool IsTextInputActive();
+
+	// Caret movement and Delete for a text field. These are the one part of
+	// text entry that has to come from the key state rather than from WM_CHAR,
+	// because they do not produce a character. Auto-repeats like the game's own
+	// held-key repeat, so holding an arrow walks the caret.
+	bool EditKeyRepeated(int iVirtualKey);
 
 	// Cursor capture for mouse-look.
 	void SetCaptured(bool bCapture);
 	bool IsCaptured();
 	void ToggleCaptured();
+
+	// ---------------------------------------------------------------------
+	// Pointer mode.
+	//
+	// Mouse-look and a usable menu pointer want opposite things from the OS
+	// cursor: look needs it hidden, clipped and parked so it can never leave
+	// the window or accumulate a position, while pointing at a menu needs a
+	// real position that the player can see. So the cursor is put into one of
+	// three modes, decided centrally once a tick by UpdatePointerMode rather
+	// than by whoever happens to touch the mouse last.
+	// ---------------------------------------------------------------------
+	enum EPointerMode
+	{
+		ePointerMode_Look,			// hidden, clipped, parked on centre; raw deltas turn the player
+		ePointerMode_MenuCursor,	// OS arrow visible and free; absolute position tracked
+		ePointerMode_HiddenCursor,	// hidden and clipped but free; the game draws its own pointer
+	};
+
+	// Called once a tick from the UI (UIController::TickMousePointer).
+	// bSceneDrawsPointer selects the hidden mode: the container menus position
+	// and draw their own pointer in Flash, and a second OS arrow on top of it,
+	// one frame behind, is worse than either alone.
+	void UpdatePointerMode(bool bMenuDisplayed, bool bSceneDrawsPointer);
+	EPointerMode GetPointerMode();
+
+	// Absolute cursor position in client pixels, fed from WM_MOUSEMOVE. This is
+	// a separate path from the raw deltas on purpose: a pointer wants the
+	// position the OS has already accelerated and clamped to the screen, not a
+	// position we integrate ourselves and have to clamp and accelerate again.
+	void OnMouseMove(int iClientX, int iClientY);
+	bool GetPointerPos(float &fX, float &fY);
+	bool GetClientSize(int &iWidth, int &iHeight);
+
+	// True once, for the tick after the pointer actually moved. Menu focus only
+	// follows the mouse when it moved, so that a player using the pad is not
+	// fighting a stationary cursor sitting over some other button.
+	bool ConsumePointerMoved();
+
+	// Raw mouse button state, for the one caller that needs a button as a button
+	// rather than as a mapped action: dragging a menu slider. 0 left, 1 right,
+	// 2 middle - the same numbering as OnMouseButton.
+	bool IsMouseButtonDown(int iButton);
+	bool MouseButtonWentDown(int iButton);
+
+	// Number row / numpad hotbar selection. Returns the 0-based slot (0-8) that
+	// was pressed this tick, if any. Read once a tick by Minecraft::tickInput.
+	bool GetHotbarSlot(int &iSlot);
+
+	// True when the pointer is live: kb/m in use and not in look mode.
+	bool IsPointerActive();
 }
 
 // Drop-in replacement for the library's C_4JInput global.
@@ -105,6 +173,23 @@ public:
 	// So the game does not sit on "please connect a controller" when the player
 	// only has a keyboard.
 	bool	IsPadConnected(int iPad);
+
+	// Text entry.
+	//
+	// RequestKeyboard is the console on-screen keyboard, and 4J_Input.lib has
+	// no PC implementation of it - so every text field in the game (world name,
+	// seed, signs, the anvil, renaming a save) did nothing on Windows. Shadowed
+	// here so the request instead opens an edit session on the menu field that
+	// is already on screen, or, for a pad player or a field the scene does not
+	// expose, on the game's own in-game keyboard scene.
+	//
+	// Nothing at the ~15 call sites changed: they still get their completion
+	// callback, and still read the answer back out of GetText. See
+	// Common/UI/UITextEdit.h.
+	EKeyboardResult	RequestKeyboard(LPCWSTR Title, LPCWSTR Text, DWORD dwPad, UINT uiMaxChars,
+									int( *Func)(LPVOID,const bool), LPVOID lpParam,
+									C_4JInput::EKeyboardMode eMode);
+	void			GetText(uint16_t *UTF16String);
 };
 
 extern C_Win64Input Win64InputManager;

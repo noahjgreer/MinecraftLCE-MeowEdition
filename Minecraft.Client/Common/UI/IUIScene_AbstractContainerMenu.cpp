@@ -22,6 +22,9 @@ IUIScene_AbstractContainerMenu::IUIScene_AbstractContainerMenu()
 	m_pointerPos.x = 0.0f;
 	m_pointerPos.y = 0.0f;
 
+#ifdef _UI_MOUSE_POINTER
+	m_bPointerFromMouse = false;
+#endif
 }
 
 IUIScene_AbstractContainerMenu::~IUIScene_AbstractContainerMenu()
@@ -282,6 +285,27 @@ void IUIScene_AbstractContainerMenu::onMouseTick()
 	bool bStickInput = false;
 	float fInputX = InputManager.GetJoypadStick_LX( iPad, false )*((float)app.GetGameSettings(iPad,eGameSetting_Sensitivity_InMenu)/100.0f); // apply the sensitivity
 	float fInputY = InputManager.GetJoypadStick_LY( iPad, false )*((float)app.GetGameSettings(iPad,eGameSetting_Sensitivity_InMenu)/100.0f); // apply the sensitivity
+
+#ifdef _UI_MOUSE_POINTER
+	// 4J Meow - the mouse has already put m_pointerPos exactly where the player
+	// is pointing (UIScene_AbstractContainerMenu::tick). Reporting it as stick
+	// input is what turns off the two behaviours below that would fight it:
+	// the snap-to-slot-centre in the no-input branch, which would drag the
+	// pointer away from the cursor, and tap detection, which would read a fast
+	// flick across the grid as a request to jump a slot.
+	if(m_bPointerFromMouse)
+	{
+		vPointerPos = m_pointerPos;
+		vPointerPos.x += m_fPointerImageOffsetX;
+		vPointerPos.y += m_fPointerImageOffsetY;
+
+		fInputX = 0.0f;
+		fInputY = 0.0f;
+		bStickInput = true;
+		m_eCurrTapState = eTapNone;
+		m_iConsectiveInputTicks = 0;
+	}
+#endif
 
 #ifdef __ORBIS__
 	// should have sensitivity for the touchpad

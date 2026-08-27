@@ -21,7 +21,9 @@ disabled — absent. Three independent confirmations:
 Two red herrings worth knowing so nobody re-investigates them:
 
 - `CKeyboard` inside `4J_Input.lib` is **not** gameplay input. It is only
-  `RequestKeyboard` / `GetText` — the on-screen text-entry keyboard.
+  `RequestKeyboard` / `GetText` — the on-screen text-entry keyboard. (Those two
+  are now shadowed as well, but for *text*, not for input: see
+  `windows-text-entry.md`.)
 - `KeyMapping` and `Options::keyUp/keyDown/...` are vestigial scaffolding from
   the original Java port. Nothing reads them for input.
 
@@ -122,13 +124,75 @@ Notable design points:
 | Debug info | F3 |
 | Third person | F5 |
 | Hotbar cycle | Mouse wheel |
+| Hotbar slot 1-9 | Number row or numpad |
 | Menu confirm / back | Enter / Esc |
-| Menu navigate | Arrows, WASD |
+| Menu navigate | Arrows, WASD, **or point with the mouse** |
+| Menu confirm / back (mouse) | Left click / right click |
 | Menu X / Y | X / Y |
+| Container menu: take or place a stack | Left click |
+| Container menu: split or place one | Right click |
 | Release mouse capture | F12 |
+| Type into a menu text field | just type — see `windows-text-entry.md` |
 
 Bindings live in one table, `s_bindings[]` in `Win64KeyboardMouse.cpp`, so
 rebinding is a data change.
+
+## Pointer modes
+
+Mouse-look and a usable menu pointer want opposite things from the OS cursor, so
+the cursor is put into one of three modes, decided once a tick by
+`Win64Input::UpdatePointerMode` (called from `UIController::TickMousePointer`)
+rather than by whoever touched the mouse last.
+
+| Mode | Cursor | When |
+|---|---|---|
+| `ePointerMode_Look` | hidden, clipped, parked on the window centre | gameplay. Raw `WM_INPUT` deltas turn the player |
+| `ePointerMode_MenuCursor` | visible, free | a control-based menu is up, or capture was released with F12 |
+| `ePointerMode_HiddenCursor` | hidden, clipped, free | a container menu is up, because that scene draws its own pointer in Flash |
+
+`s_captured` is still the player's *intent* to be in mouse-look; the mode is
+what that intent plus the current menu state resolves to. Only `Look` accumulates
+look deltas and only `Look` parks the cursor; the other two track an absolute
+client position from `WM_MOUSEMOVE`, so the OS acceleration and screen clamping
+apply exactly once.
+
+## Menus and the inventory are pointed at, not just clicked
+
+Two separate mechanisms, both Windows-only, both leaning on plumbing the Vita
+touchscreen port already had. See
+`docs/changes/2026-08-27-mouse-driven-menus-and-inventory-pointer.md` for the
+full reasoning.
+
+- **Control-based scenes** (main menu, pause, settings, world select, crafting):
+  `UIController::TickMousePointer` hit-tests the mouse against each control's
+  live Flash bounds and calls `UIScene::SetFocusToElement`. It only ever sets
+  focus - the click itself is an ordinary `ACTION_MENU_A`/`_B`/`_X` from the
+  mouse buttons travelling the same path the pad uses.
+- **Container menus** (inventory, chest, furnace, ...):
+  `UIScene_AbstractContainerMenu::UpdatePointerFromMouse` writes the mouse
+  position straight into `m_pointerPos`, and `m_bPointerFromMouse` tells
+  `onMouseTick` to skip the snap-to-slot and tap-to-jump behaviour that exists
+  only to make a thumbstick feel like a pointer.
+
+- **Sliders** are the one control the pointer does more than focus. Clicking or
+  dragging one calls `UIControl_Slider::SetSliderTouchPos` with the pointer's
+  relative position along the track, which is the Vita touch path's mechanism -
+  ActionScript quantises it and calls `handleSliderMove` back. The drag is held
+  in `UIController::m_pMouseSliderControl` and released with the button, not by
+  leaving the control. See
+  `docs/changes/2026-08-27-mouse-slider-dragging.md`.
+
+The shared pieces sit behind `_UI_POINTER_SUPPORT` (Vita + Windows) and the
+Windows driver behind `_UI_MOUSE_POINTER`, both defined in
+`Minecraft.Client/Common/UI/UIPointer.h`.
+
+## Typing text is a separate path
+
+`WM_CHAR`, not the binding table — because that is where Windows has already
+applied the keyboard layout, the shift state and dead keys. While a menu text
+field is open, `Win64Input::SetTextInputActive` makes the keyboard stop feeding
+game and menu actions entirely, so typing a world name cannot also walk the
+player. The pad is unaffected. See `windows-text-entry.md`.
 
 ## Gotchas
 

@@ -3304,6 +3304,27 @@ void Minecraft::tick(bool bFirst, bool bUpdateTextures)
 			}
 		}
 
+#if defined(_WINDOWS64)
+		// 4J Meow - Number keys 1-9 pick a hotbar slot directly. Absolute, so
+		// it cannot go through swapPaint; the side effects afterwards are the
+		// same ones the wheel path does. Gated on the same isInputAllowed the
+		// wheel uses, because it is the same "change held item" input.
+		{
+			int iHotbarSlot = -1;
+			if (Win64Input::GetHotbarSlot(iHotbarSlot)
+				&& gameMode->isInputAllowed(MINECRAFT_ACTION_LEFT_SCROLL)
+				&& player->inventory->selected != iHotbarSlot)
+			{
+				player->inventory->selected = iHotbarSlot;
+
+				if( gameMode != NULL && gameMode->getTutorial() != NULL )
+					gameMode->getTutorial()->onSelectedItemChanged(player->inventory->getSelected());
+
+				player->updateRichPresence();
+			}
+		}
+#endif // _WINDOWS64
+
 		if( gameMode->isInputAllowed(MINECRAFT_ACTION_ACTION) )
 		{
 			if((player->ullButtonsPressed&(1LL<<MINECRAFT_ACTION_ACTION)))

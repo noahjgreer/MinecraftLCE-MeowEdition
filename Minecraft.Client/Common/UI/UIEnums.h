@@ -1,5 +1,7 @@
 #pragma once
 
+#include "UIPointer.h"
+
 // Defines the fixed groups for UI (lower numbers ticked first, rendered last (ie on top))
 enum EUIGroup
 {

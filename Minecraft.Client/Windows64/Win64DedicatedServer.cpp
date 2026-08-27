@@ -12,6 +12,10 @@
 #include <stdio.h>
 #include <share.h>
 #include <time.h>
+#include <dbghelp.h>
+
+// 4J Meow - for the crash handler below. dbghelp ships with the Windows SDK.
+#pragma comment(lib, "dbghelp.lib")
 
 namespace Win64DedicatedServer
 {
@@ -37,6 +41,90 @@ namespace Win64DedicatedServer
 		return Win64CommandLine::WantsDedicatedServer();
 	}
 
+	void RequestStop()
+	{
+		s_bStopRequested = true;
+	}
+
+	// 4J Meow - the Java dedicated server's stdin console. 4J left the shape of
+	// this in place - MinecraftServer::handleConsoleInput / handleConsoleInputs
+	// are still there - but the reader thread that fed it is commented out at
+	// the top of initServer, so nothing ever reached it. This is that thread.
+	//
+	// Note handleConsoleInputs() currently drains the queue and discards it:
+	// 4J removed the "commands->handleCommand(input)" dispatch. So anything
+	// beyond the locally-handled commands below is accepted and ignored until a
+	// dispatcher is wired up. "stop" is handled here rather than queued so that
+	// it works even when the server thread is wedged.
+	static unsigned long __stdcall ConsoleReaderProc(void *)
+	{
+		char szLine[512];
+
+		while (!s_bStopRequested)
+		{
+			if (fgets(szLine, sizeof(szLine), stdin) == NULL)
+			{
+				// EOF - stdin is closed or was never connected (the server was
+				// launched detached). There is nothing further to read, so the
+				// thread retires rather than spinning on a dead handle.
+				return 0;
+			}
+
+			// Trim the newline and any trailing whitespace.
+			size_t len = strlen(szLine);
+			while (len > 0 && (unsigned char)szLine[len-1] <= ' ') szLine[--len] = 0;
+
+			// Skip a UTF-8 BOM. Whatever is on the other end of stdin decides
+			// this, not us - a redirected pipe from PowerShell prepends one to
+			// the first line, which turned "stop" into an unknown command.
+			char *pszCmd = szLine;
+			if ((unsigned char)pszCmd[0] == 0xEF &&
+			    (unsigned char)pszCmd[1] == 0xBB &&
+			    (unsigned char)pszCmd[2] == 0xBF)
+			{
+				pszCmd += 3;
+			}
+
+			// Skip leading whitespace.
+			while (*pszCmd != 0 && (unsigned char)*pszCmd <= ' ') pszCmd++;
+
+			if (*pszCmd == 0) continue;
+
+			if (_stricmp(pszCmd, "stop") == 0 || _stricmp(pszCmd, "end") == 0 || _stricmp(pszCmd, "quit") == 0)
+			{
+				Log("Console: stop");
+				RequestStop();
+				return 0;
+			}
+			else if (_stricmp(pszCmd, "help") == 0 || _stricmp(pszCmd, "?") == 0)
+			{
+				Log("Commands: stop, players, help");
+			}
+			else if (_stricmp(pszCmd, "players") == 0 || _stricmp(pszCmd, "list") == 0)
+			{
+				int iPlayers = g_NetworkManager.GetPlayerCount();
+				if (iPlayers > 0) iPlayers--;		// see Tick() - the host identity is not a player
+				Log("Players online: %d/%d", iPlayers, Win64CommandLine::GetMaxPlayers());
+			}
+			else
+			{
+				// Hand it to the server's own queue. Harmless today, and the
+				// right place for it once a dispatcher exists.
+				MinecraftServer *pServer = MinecraftServer::getInstance();
+				if (pServer != NULL)
+				{
+					wchar_t wszCmd[512];
+					size_t converted = 0;
+					mbstowcs_s(&converted, wszCmd, _countof(wszCmd), pszCmd, _TRUNCATE);
+					pServer->handleConsoleInput(wstring(wszCmd), NULL);
+				}
+				Log("Unknown command: %s (try \"help\")", pszCmd);
+			}
+		}
+
+		return 0;
+	}
+
 	static BOOL WINAPI CtrlHandler(DWORD dwCtrlType)
 	{
 		switch (dwCtrlType)
@@ -60,6 +148,79 @@ namespace Win64DedicatedServer
 		}
 
 		return FALSE;
+	}
+
+	// 4J Meow - a dedicated server runs unattended, so a silent 0xC0000005 with
+	// nothing in the log is useless to whoever has to run it. This resolves the
+	// faulting stack against the PDB sitting next to the exe and writes it to
+	// server.log before letting the process die.
+	//
+	// Deliberately minimal and allocation-free where it can be: the process is
+	// already in an undefined state by the time this runs.
+	static LONG WINAPI CrashHandler(EXCEPTION_POINTERS *pExceptionInfo)
+	{
+		Log("*** UNHANDLED EXCEPTION 0x%08X at %p ***",
+			pExceptionInfo->ExceptionRecord->ExceptionCode,
+			pExceptionInfo->ExceptionRecord->ExceptionAddress);
+
+		HANDLE hProcess = GetCurrentProcess();
+		SymSetOptions(SYMOPT_DEFERRED_LOADS | SYMOPT_UNDNAME | SYMOPT_LOAD_LINES);
+		SymInitialize(hProcess, NULL, TRUE);
+
+		CONTEXT ctx = *pExceptionInfo->ContextRecord;
+
+		STACKFRAME64 frame;
+		memset(&frame, 0, sizeof(frame));
+		frame.AddrPC.Offset		= ctx.Rip;
+		frame.AddrPC.Mode		= AddrModeFlat;
+		frame.AddrFrame.Offset	= ctx.Rbp;
+		frame.AddrFrame.Mode	= AddrModeFlat;
+		frame.AddrStack.Offset	= ctx.Rsp;
+		frame.AddrStack.Mode	= AddrModeFlat;
+
+		// SYMBOL_INFO wants trailing room for the undecorated name.
+		char symbolBuffer[sizeof(SYMBOL_INFO) + 512];
+		memset(symbolBuffer, 0, sizeof(symbolBuffer));
+		SYMBOL_INFO *pSymbol = (SYMBOL_INFO *)symbolBuffer;
+		pSymbol->SizeOfStruct	= sizeof(SYMBOL_INFO);
+		pSymbol->MaxNameLen		= 512;
+
+		for (int i = 0; i < 48; i++)
+		{
+			if (!StackWalk64(IMAGE_FILE_MACHINE_AMD64, hProcess, GetCurrentThread(),
+					&frame, &ctx, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL))
+			{
+				break;
+			}
+
+			if (frame.AddrPC.Offset == 0) break;
+
+			DWORD64 displacement = 0;
+			if (SymFromAddr(hProcess, frame.AddrPC.Offset, &displacement, pSymbol))
+			{
+				IMAGEHLP_LINE64 line;
+				memset(&line, 0, sizeof(line));
+				line.SizeOfStruct = sizeof(line);
+				DWORD lineDisplacement = 0;
+
+				if (SymGetLineFromAddr64(hProcess, frame.AddrPC.Offset, &lineDisplacement, &line))
+				{
+					Log("  [%02d] %s  (%s:%d)", i, pSymbol->Name, line.FileName, line.LineNumber);
+				}
+				else
+				{
+					Log("  [%02d] %s + 0x%llX", i, pSymbol->Name, displacement);
+				}
+			}
+			else
+			{
+				Log("  [%02d] 0x%016llX", i, frame.AddrPC.Offset);
+			}
+		}
+
+		Log("*** end of stack ***");
+
+		return EXCEPTION_EXECUTE_HANDLER;
 	}
 
 	void Initialise()
@@ -95,10 +256,21 @@ namespace Win64DedicatedServer
 			FILE *pDummy = NULL;
 			freopen_s(&pDummy, "CONOUT$", "w", stdout);
 			freopen_s(&pDummy, "CONOUT$", "w", stderr);
+
+			// 4J Meow - and stdin, or the console command thread's first fgets
+			// hits EOF on an unattached handle and the reader retires before
+			// anyone can type "stop".
+			freopen_s(&pDummy, "CONIN$", "r", stdin);
 		}
+
+		// 4J Meow - tell the shared game layers there is no UI to drive. Set here
+		// rather than in Start() because ServerStoppedWait can be reached before
+		// the server is fully up.
+		CGameNetworkManager::s_bHeadless = true;
 
 		SetConsoleTitleA("Minecraft LCE - Meow Edition (dedicated server)");
 		SetConsoleCtrlHandler(CtrlHandler, TRUE);
+		SetUnhandledExceptionFilter(CrashHandler);
 
 		Log("Minecraft LCE Meow Edition - dedicated server");
 		Log("Logging to server.log");
@@ -269,7 +441,16 @@ namespace Win64DedicatedServer
 		s_dwLastStatusTick = GetTickCount();
 
 		Log("Server ready, listening on port %d", Win64CommandLine::GetServerPort());
-		Log("Press Ctrl+C to save and stop.");
+		Log("Type \"stop\" or press Ctrl+C to save and stop. \"help\" for commands.");
+
+		// The stdin console. Detached as a plain thread rather than a C4JThread
+		// because it spends its whole life blocked in fgets and must not be
+		// waited on at shutdown - there is no way to cancel a blocking read.
+		{
+			DWORD dwThreadId = 0;
+			HANDLE hReader = CreateThread(NULL, 0, ConsoleReaderProc, NULL, 0, &dwThreadId);
+			if (hReader != NULL) CloseHandle(hReader);
+		}
 
 		return true;
 	}
@@ -357,6 +538,15 @@ namespace Win64DedicatedServer
 		// The game loop has nothing left to do without a server.
 		Minecraft *pMinecraft = Minecraft::GetInstance();
 		if (pMinecraft != NULL) pMinecraft->stop();
+
+		// 4J Meow - ...but stop() only clears Minecraft::running, which the
+		// dedicated path never looks at: the Windows x64 loop runs until it sees
+		// WM_QUIT, and on a client that arrives from the window being closed.
+		// There is no window here, so nothing would ever post it and the process
+		// sat idle forever after a successful shutdown. Shutdown() is only ever
+		// reached from Tick(), which is on the main thread, so PostQuitMessage
+		// is addressed to the right queue.
+		PostQuitMessage(0);
 	}
 }
 

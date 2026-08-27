@@ -106,10 +106,27 @@ public:
 	int getRenderWidth() { return m_renderWidth; }
 	int getRenderHeight() { return m_renderHeight; }
 
-#ifdef __PSVITA__
+#ifdef _UI_POINTER_SUPPORT
 	UILayer *GetParentLayer() {return m_parentLayer;}
 	EUIGroup GetParentLayerGroup() {return m_parentLayer->m_parentGroup->GetGroup();}
 	vector<UIControl *> *GetControls() {return &m_controls;}
+
+	// The scene's authored coordinate space. Control positions are in these
+	// units, so a pointer position in render pixels has to be scaled by
+	// movie/render before it can be hit-tested against them.
+	int getMovieWidth() { return m_movieWidth; }
+	int getMovieHeight() { return m_movieHeight; }
+
+	// True for a scene that positions and draws its own pointer in Flash - the
+	// container menus. Such a scene wants the OS cursor hidden and wants the
+	// generic focus-follows-pointer hit-test to keep out of the way, because it
+	// hit-tests item slots that are not UIControls at all.
+	//
+	// Note this is NOT the same question as "is a container menu displayed":
+	// the crafting menus are flagged as container menus for the autosave and
+	// input rules, but they are ordinary control-based scenes with no pointer
+	// of their own, and they do want the generic path.
+	virtual bool hasOwnPointer() { return false; }
 #endif
 
 protected:
@@ -139,7 +156,7 @@ public:
 	virtual void tick();
 
 	IggyName registerFastName(const wstring &name);
-#ifdef __PSVITA__
+#ifdef _UI_POINTER_SUPPORT
 	void SetFocusToElement(int iID); 
 	void UpdateSceneControls();
 #endif
@@ -237,6 +254,15 @@ public:
 	bool controlHasFocus(UIControl_Base *control);
 	int getControlFocus();
 	int getControlChildFocus();
+
+#ifdef _UI_INLINE_TEXT_ENTRY
+	// 4J Meow - the text input this scene currently has focus on, or NULL.
+	//
+	// RequestKeyboard does not say which field it is editing, and it does not
+	// have to: it is only ever called in response to the player activating that
+	// field, so the focused control is the target. See UITextEdit.h.
+	UIControl_Base *findFocusedTextInput();
+#endif
 
 	// NAVIGATION
 protected:

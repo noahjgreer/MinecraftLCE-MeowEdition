@@ -27,7 +27,7 @@ public:
 	bool m_bIgnoreAutosaveMenuDisplayed;
 	bool m_bIgnorePlayerJoinMenuDisplayed;
 
-#ifdef __PSVITA__
+#ifdef _UI_POINTER_SUPPORT
 	EUILayer m_iLayer;
 #endif
 
@@ -66,7 +66,7 @@ public:
 
 	// INPUT
 	void handleInput(int iPad, int key, bool repeat, bool pressed, bool released, bool &handled);
-#ifdef __PSVITA__	
+#ifdef _UI_POINTER_SUPPORT
 	// Current active scene
 	UIScene *getCurrentScene();
 #endif
