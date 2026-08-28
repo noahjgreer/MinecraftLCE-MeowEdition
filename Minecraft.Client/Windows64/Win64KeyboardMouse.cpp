@@ -86,6 +86,18 @@ namespace
 	int		s_wheelUpTicks		= 0;
 	int		s_wheelDownTicks	= 0;
 
+	// Impulses waiting for the *game tick* to collect them.
+	//
+	// Tick() runs once per rendered frame, but the gameplay input code runs
+	// once per game tick (20Hz), so at any decent framerate most frames are not
+	// followed by a tick. Anything that lives only in the per-frame snapshot -
+	// a key edge, or a wheel notch held for WHEEL_HOLD_TICKS frames - is
+	// therefore usually latched and dropped before the game ever looks at it.
+	// These two pend until the consumer takes them, exactly as 4J's own
+	// Player::ullButtonsPressed does for pad button presses.
+	int		s_wheelPending		= 0;	// notches, signed: + is up/away
+	int		s_pendingHotbarSlot	= -1;	// 0-based, -1 for none
+
 	bool	s_inUse			= false;		// has the player touched kb/mouse?
 	bool	s_hasFocus		= true;
 	bool	s_captured		= false;
@@ -471,6 +483,19 @@ namespace Win64Input
 			return;
 		}
 
+		// Number row / numpad select a hotbar slot. Recorded here rather than
+		// read as an edge off the per-tick snapshot so the press survives until
+		// the next game tick - see s_pendingHotbarSlot. The s_keyDown test
+		// discards the OS auto-repeat, which would otherwise stream presses
+		// while the key is held.
+		if (!s_keyDown[iVirtualKey])
+		{
+			if (iVirtualKey >= '1' && iVirtualKey <= '9')
+				s_pendingHotbarSlot = iVirtualKey - '1';
+			else if (iVirtualKey >= VK_NUMPAD1 && iVirtualKey <= VK_NUMPAD9)
+				s_pendingHotbarSlot = iVirtualKey - VK_NUMPAD1;
+		}
+
 		s_keyDown[iVirtualKey] = true;
 		MarkInUse();
 
@@ -554,8 +579,12 @@ namespace Win64Input
 
 	void OnMouseWheel(int iDelta)
 	{
-		if (iDelta > 0)			s_wheelUpTicks   = WHEEL_HOLD_TICKS;
-		else if (iDelta < 0)	s_wheelDownTicks = WHEEL_HOLD_TICKS;
+		// The pending count is clamped so that spinning the wheel while the
+		// hotbar is not accepting input cannot queue up a long backlog that
+		// then unwinds visibly once it is.
+		const int WHEEL_PENDING_MAX = 9;
+		if (iDelta > 0)			{ s_wheelUpTicks   = WHEEL_HOLD_TICKS; if (s_wheelPending <  WHEEL_PENDING_MAX) s_wheelPending++; }
+		else if (iDelta < 0)	{ s_wheelDownTicks = WHEEL_HOLD_TICKS; if (s_wheelPending > -WHEEL_PENDING_MAX) s_wheelPending--; }
 		if (iDelta != 0) MarkInUse();
 	}
 
@@ -671,27 +700,28 @@ namespace Win64Input
 		RecomputeMode();
 	}
 
-	bool GetHotbarSlot(int &iSlot)
+	bool ConsumeHotbarSlot(int &iSlot)
 	{
-		// A number typed into a text field is text, not a hotbar slot.
-		if (TextInputOwnsKeyboard()) return false;
+		if (s_pendingHotbarSlot < 0) return false;
 
-		// The number row and the numpad both select a hotbar slot directly. This
-		// is a separate path from the wheel because it is an absolute selection
-		// rather than a relative step, so it cannot go through swapPaint.
-		//
-		// An edge query against the per-tick snapshot, so it is idempotent within
-		// a tick and cannot fire twice for one keypress.
-		for (int i = 0; i < 9; i++)
-		{
-			if (KeyWentDown('1' + i) || KeyWentDown(VK_NUMPAD1 + i))
-			{
-				iSlot = i;
-				return true;
-			}
-		}
-		return false;
+		iSlot = s_pendingHotbarSlot;
+		s_pendingHotbarSlot = -1;
+		return true;
 	}
+
+	int ConsumeWheelNotch()
+	{
+		// One notch per call, not the whole accumulator: Inventory::swapPaint
+		// clamps its argument to a single step, so handing it a three-notch
+		// flick would move one slot and silently drop the other two. The caller
+		// runs at 20Hz, so a flick still resolves in well under a fifth of a
+		// second.
+		if (s_wheelPending > 0)	{ s_wheelPending--; return  1; }
+		if (s_wheelPending < 0)	{ s_wheelPending++; return -1; }
+		return 0;
+	}
+
+	void ClearWheelNotches()	{ s_wheelPending = 0; }
 
 	EPointerMode GetPointerMode()	{ return s_mode; }
 	bool IsPointerActive()			{ return s_inUse && s_mode != ePointerMode_Look; }
@@ -944,4 +974,40 @@ void C_Win64Input::GetText(uint16_t *UTF16String)
 	g_UITextEdit.GetResult(UTF16String);
 }
 
-#endif // _WINDOWS64
+
+// ---------------------------------------------------------------------------
+// 4J Meow - the LWJGL Mouse shim, backed by the real cursor.
+//
+// stubs.h had these returning 0, which is why the Java-derived Screen/Button
+// UI never showed a hover state: GameRenderer feeds Mouse::getX/getY into
+// Screen::render as the hover position, and the buttons were being asked
+// forever about the top-left corner.
+//
+// Coordinates are in physical client pixels; GameRenderer scales them into the
+// GUI coordinate space itself. getY is bottom-up because the call site does
+// the LWJGL flip and is shared with the console builds, which must not change.
+// ---------------------------------------------------------------------------
+int Mouse::getX()
+{
+	float fX = 0.0f, fY = 0.0f;
+	if(!Win64Input::GetPointerPos(fX, fY)) return 0;
+	return (int)fX;
+}
+
+int Mouse::getY()
+{
+	float fX = 0.0f, fY = 0.0f;
+	if(!Win64Input::GetPointerPos(fX, fY)) return 0;
+
+	int iClientW = 0, iClientH = 0;
+	if(!Win64Input::GetClientSize(iClientW, iClientH)) return 0;
+
+	return iClientH - 1 - (int)fY;
+}
+
+bool Mouse::isButtonDown(int iButton)
+{
+	return Win64Input::IsMouseButtonDown(iButton);
+}
+
+#endif	// _WINDOWS64

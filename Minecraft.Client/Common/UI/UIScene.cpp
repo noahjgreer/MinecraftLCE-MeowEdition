@@ -2,6 +2,7 @@
 #include "UI.h"
 #include "UIScene.h"
 #include "UITextEdit.h"
+#include "..\..\Windows64\MeowLog.h"
 
 #include "..\..\Lighting.h"
 #include "..\..\LocalPlayer.h"
@@ -1274,3 +1275,29 @@ bool UIScene::isReadyToDelete()
 {
 	return true;
 }
+#ifdef _UI_POINTER_SUPPORT
+// 4J Meow - see the comment on the declaration in UIScene.h.
+void UIScene::DumpLayout()
+{
+	MEOWLOG("[meow] --- scene layout: sceneType %d, movie %dx%d, render %dx%d, %d controls\n",
+		(int)getSceneType(), m_movieWidth, m_movieHeight,
+		m_renderWidth, m_renderHeight, (int)m_controls.size());
+
+	for(size_t i = 0; i < m_controls.size(); i++)
+	{
+		UIControl *pControl = m_controls[i];
+		if(pControl == NULL) continue;
+
+		// Positions and sizes are only correct for the frame they are taken on -
+		// ActionScript moves controls around after setupControl ran - so re-read
+		// them rather than trusting the cached values.
+		pControl->UpdateControl();
+
+		MEOWLOG("[meow]     %-24s x %5d  y %5d  w %5d  h %5d  vis %d\n",
+			pControl->getControlName().c_str(),
+			(int)pControl->getXPos(), (int)pControl->getYPos(),
+			(int)pControl->getWidth(), (int)pControl->getHeight(),
+			pControl->getVisible() ? 1 : 0);
+	}
+}
+#endif

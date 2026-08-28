@@ -148,6 +148,10 @@ private:
 	void SystemFlagRemovePlayer(INetworkPlayer *pNetworkPlayer);
 	void SystemFlagReset();
 
+	// Keeps GetSessionIndex() in the same index space as GetPlayerByIndex().
+	// Callers must hold m_playersLock. See the definition for why.
+	void ReindexPlayers();
+
 	enum eSessionState
 	{
 		eState_Idle = 0,

@@ -308,6 +308,12 @@ public:
 public:
 	// NAVIGATION
 	bool NavigateToScene(int iPad, EUIScene scene, void *initData = NULL, EUILayer layer = eUILayer_Scene, EUIGroup group = eUIGroup_PAD);
+#ifdef _MEOW_NATIVE_UI
+	// 4J Meow - handles a scene that has been ported off Flash onto a native
+	// Screen. Called first thing by NavigateToScene; returns true when it has
+	// taken the navigation, false to let the Flash path run as before.
+	bool NavigateToNativeScreen(int iPad, EUIScene scene);
+#endif
 	bool NavigateBack(int iPad, bool forceUsePad = false, EUIScene eScene = eUIScene_COUNT, EUILayer eLayer = eUILayer_COUNT);
 	void NavigateToHomeMenu();
 	UIScene *GetTopScene(int iPad, EUILayer layer = eUILayer_Scene, EUIGroup group = eUIGroup_PAD);

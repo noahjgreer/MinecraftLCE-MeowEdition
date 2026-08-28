@@ -111,6 +111,15 @@ public:
 	EUIGroup GetParentLayerGroup() {return m_parentLayer->m_parentGroup->GetGroup();}
 	vector<UIControl *> *GetControls() {return &m_controls;}
 
+	// 4J Meow - log this scene's live layout: movie and render dimensions, then
+	// every mapped control's name and its authored x/y/width/height.
+	//
+	// tools/swf_layout.py recovers positions from the .swf, but not sizes - the
+	// buttons are placed with no character id and are instantiated from the AS3
+	// library at runtime, so width and height only exist once Flash has laid the
+	// scene out. This is how the native reimplementation gets them.
+	void DumpLayout();
+
 	// The scene's authored coordinate space. Control positions are in these
 	// units, so a pointer position in render pixels has to be scaled by
 	// movie/render before it can be hit-tested against them.

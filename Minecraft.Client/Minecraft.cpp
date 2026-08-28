@@ -1,4 +1,8 @@
 #include "stdafx.h"
+#ifdef _WINDOWS64
+#include "Windows64\MeowLog.h"
+#include <typeinfo>			// 4J Meow - screen names in the diagnostic log
+#endif
 #include "Minecraft.h"
 #include "GameMode.h"
 #include "Timer.h"
@@ -151,6 +155,7 @@ Minecraft::Minecraft(Component *mouseComponent, Canvas *parent, MinecraftApplet 
 	achievementPopup = new AchievementPopup(this);
 	gui = NULL;
 	noRender = false;
+	m_bNativeScreenActive = false;		// 4J Meow - see Minecraft.h
 	humanoidModel = new HumanoidModel(0);
 	hitResult = 0;
 	options = NULL;
@@ -542,6 +547,62 @@ Minecraft::OS Minecraft::getPlatform()
 LevelStorageSource *Minecraft::getLevelSource()
 {
 	return levelSource;
+}
+
+// 4J Meow - added. See the comment on the declaration in Minecraft.h.
+void Minecraft::tickScreenNoPlayer()
+{
+	if(!m_bNativeScreenActive) return;	// the Flash UI still owns the display
+	if(player != NULL) return;		// Minecraft::tick owns the screen once there is a player
+	if(screen == NULL) return;
+
+	MEOWLOG("[meow]   tickScreen: updateEvents\n");
+	screen->updateEvents();
+	MEOWLOG("[meow]   tickScreen: updateEvents done\n");
+
+	// updateEvents can navigate away, and setScreen deletes nothing but does
+	// replace the pointer, so re-check before touching it again.
+	if(screen == NULL) return;
+
+	if(screen->particles != NULL) screen->particles->tick();
+	MEOWLOG("[meow]   tickScreen: particles done\n");
+	screen->tick();
+	MEOWLOG("[meow]   tickScreen: tick done\n");
+}
+
+// 4J Meow - added. See the comment on the declaration in Minecraft.h.
+void Minecraft::renderScreenNoLevel()
+{
+	if(!m_bNativeScreenActive) return;	// the Flash UI still owns the display
+	if(screen == NULL) return;
+	if(level != NULL) return;		// with a level, run_middle/GameRenderer already draws it
+	if(noRender) return;
+
+	// Name the screen every frame, so if a crash happens on some half-ported
+	// screen the log's last lines say exactly which one was being drawn.
+	MEOWLOG("[meow]   renderScreen: %s\n", typeid(*screen).name());
+
+	// 4J Meow - nothing else clears the backbuffer before a world is loaded.
+	// The clear in the platform loop is inside a dead #if 0 block, and normally
+	// it does not matter because the Flash panorama covers the whole screen
+	// every frame. With the Flash scenes gone, an unclear backbuffer just keeps
+	// showing the last thing that was in it - which looks exactly like a frozen
+	// picture even though the loop is running fine.
+	const float clearColour[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	RenderManager.SetClearColour(clearColour);
+	RenderManager.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	// Iggy draws through its own renderer (gdraw) and leaves RenderManager's
+	// cached matrix state stale. The code that used to correct for that sits in
+	// the same dead #if 0 block, so do it here.
+	RenderManager.Set_matrixDirty();
+
+	// GameRenderer::render takes its no-level branch here: it sets the viewport
+	// and the GUI ortho projection, skips the world and the HUD entirely, and
+	// then renders mc->screen. bFirst only gates updateLightTexture, which is a
+	// world thing, so false is correct.
+	gameRenderer->render(timer->a, false);
+	MEOWLOG("[meow]   renderScreen: gameRenderer->render done\n");
 }
 
 void Minecraft::setScreen(Screen *screen)
@@ -3282,6 +3343,29 @@ void Minecraft::tick(bool bFirst, bool bUpdateTextures)
 		{
 			wheel = -1;
 		}
+#if defined(_WINDOWS64)
+		// 4J Meow - The mouse wheel is an impulse, not a held shoulder button,
+		// so it cannot be read as a level here: this code runs at 20Hz while
+		// the input snapshot is latched per rendered frame, and a notch would
+		// almost always be dropped in between. The notches pend instead and are
+		// collected here, one per tick.
+		//
+		// Negated because the sign conventions differ: ConsumeWheelNotch is +1
+		// for wheel-up, while `wheel` here follows the pad, where wheel-up is
+		// RIGHT_SCROLL and so -1. Assigning rather than adding to `wheel` means
+		// a notch that the GetValue path above already saw is not counted twice.
+		if (gameMode->isInputAllowed(MINECRAFT_ACTION_LEFT_SCROLL))
+		{
+			const int iNotch = Win64Input::ConsumeWheelNotch();
+			if (iNotch != 0) wheel = -iNotch;
+		}
+		else
+		{
+			// Drop anything spun while the held item was locked, rather than
+			// letting it unwind the moment input is allowed again.
+			Win64Input::ClearWheelNotches();
+		}
+#endif // _WINDOWS64
 		if (wheel != 0)
 		{
 			player->inventory->swapPaint(wheel);
@@ -3311,7 +3395,7 @@ void Minecraft::tick(bool bFirst, bool bUpdateTextures)
 		// wheel uses, because it is the same "change held item" input.
 		{
 			int iHotbarSlot = -1;
-			if (Win64Input::GetHotbarSlot(iHotbarSlot)
+			if (Win64Input::ConsumeHotbarSlot(iHotbarSlot)
 				&& gameMode->isInputAllowed(MINECRAFT_ACTION_LEFT_SCROLL)
 				&& player->inventory->selected != iHotbarSlot)
 			{

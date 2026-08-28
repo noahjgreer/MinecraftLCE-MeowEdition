@@ -219,6 +219,55 @@ player. The pad is unaffected. See `windows-text-entry.md`.
   binding table because they come from the wheel, which is an impulse rather
   than a held key. `WHEEL_HOLD_TICKS` keeps a notch "held" briefly so both
   `ButtonPressed` and `ButtonDown` can observe it.
+- **Number-key hotbar selection is also outside the binding table**, for the
+  opposite reason: it is an *absolute* selection, not an action. There is no
+  4J action id meaning "select slot 5", so `Win64Input::ConsumeHotbarSlot`
+  reports the pressed slot and `Minecraft::tick` writes `inventory->selected`
+  directly, next to the wheel's `swapPaint` call and behind the same
+  `isInputAllowed(MINECRAFT_ACTION_LEFT_SCROLL)` gate.
+
+## Per-frame latching versus per-tick reading
+
+The single most important timing fact in this file, and the cause of a bug that
+made both the wheel and the number keys look broken:
+
+**`InputManager.Tick()` runs once per rendered frame. The gameplay input code
+runs once per game tick, at 20Hz.** At 60+ fps most frames are not followed by a
+game tick, so anything that exists only in the per-frame snapshot - a key edge
+(`KeyWentDown`), or a wheel notch held for `WHEEL_HOLD_TICKS` frames - is
+usually latched and then overwritten before the game ever looks at it.
+
+This is not a new problem and 4J hit it first: `Player::ullButtonsPressed` is a
+bitmask *accumulated every frame* and consumed at the game tick, precisely so a
+pad press cannot fall between two ticks. Level queries (movement, holding
+attack) are unaffected, which is why those always worked.
+
+So anything impulse-shaped that gameplay reads must **pend until consumed**,
+not decay on frame time:
+
+| Impulse | Pending state | Consumed by |
+|---|---|---|
+| Wheel notch | `s_wheelPending` (signed count, clamped to +/-9) | `ConsumeWheelNotch`, one notch per game tick |
+| Number key | `s_pendingHotbarSlot` | `ConsumeHotbarSlot` |
+
+Notes:
+
+- The slot is recorded in `OnKeyDown`, not read as a snapshot edge, and is
+  guarded by `!s_keyDown[vk]` to discard the OS auto-repeat.
+- `ConsumeWheelNotch` yields **one** notch per call because
+  `Inventory::swapPaint` clamps its argument to a single step - handing it a
+  three-notch flick would move one slot and drop the other two.
+- `s_wheelUpTicks` / `s_wheelDownTicks` still exist and still feed the
+  `ACTION_MENU_*_SCROLL` actions through `ActionHasWheel`. Menus are ticked per
+  frame, so the hold window works there; only the gameplay hotbar path uses the
+  pending counter. The two cannot double-count a notch: the gameplay code
+  *assigns* to `wheel` rather than adding, so a notch seen by both paths within
+  one tick still moves exactly one slot.
+- Sign conventions differ between the two, deliberately. `ConsumeWheelNotch` is
+  `+1` for wheel-up, while `wheel` in `Minecraft.cpp` follows the pad, where
+  wheel-up is `RIGHT_SCROLL` and therefore `-1`. Hence the negation at the call
+  site. **If wheel direction feels inverted, flip that negation** - that is the
+  intended fix.
 
 ## Why the button glyphs still show a controller — blocked
 

@@ -1,18 +1,29 @@
 # Dedicated server (Windows x64)
 
-Status: **implemented and headless.** 2026-08-27. The server runs silent, with no
-window, no UI and no rendering; it accepts TCP connections, takes `stop` on stdin,
-saves and exits cleanly.
+Status: **implemented, headless and persistent.** 2026-08-28. The server runs
+silent, with no window, no UI and no rendering; it accepts TCP connections, takes
+`stop` and `save` on stdin, autosaves every 5 minutes, and saves and exits
+cleanly.
 
-**World persistence does NOT work, and the reason is now known:**
-`StorageManager.Init(...)` sits inside an `#if 0` in `Windows64_Minecraft.cpp`
-(line 945, block 908-955), so `StorageManager` is never initialised on this
-platform at all. The save blob is built and written nowhere. This affects client
-saving on Windows x64 equally - it is not a server-specific bug.
+**World persistence now works** (built, not yet runtime-confirmed by the owner).
+`StorageManager` is still never initialised on this platform - `StorageManager.Init(...)`
+remains inside an `#if 0` in `Windows64_Minecraft.cpp` (line 945, block 908-955),
+because the Win64 build of `4J_Storage.lib` takes a different `Init` signature
+from the Xbox call written there. Instead of bringing that library up, the save
+blob is now read and written as a plain file by
+`Minecraft.Client/Windows64/Win64SaveFile.{h,cpp}`, at
+`<level-name>/savegame.dat`. The blob format is unchanged, so client and server
+saves are interchangeable.
 
-Read `docs/changes/2026-08-27-headless-dedicated-server.md` first; it supersedes
-much of the detail below. `docs/changes/2026-08-26-dedicated-server.md` has the
-original bring-up.
+**Multiplayer chunk streaming also had a bug**: only one connected player
+received the world, because `NetworkPlayerSockets::GetSessionIndex()` returned a
+`smallId` while `MinecraftServer::canSendOnSlowQueue` compares it against an
+index into the platform manager's player array. Fixed by re-indexing players on
+add and remove.
+
+Read `docs/changes/2026-08-28-world-persistence-and-multiplayer-chunk-streaming.md`
+first, then `docs/changes/2026-08-27-headless-dedicated-server.md`.
+`docs/changes/2026-08-26-dedicated-server.md` has the original bring-up.
 
 Goal: `Minecraft.Client.exe -dedicated -world "Server World" -port 25565` runs a
 headless, logging, world-saving server that friends join by address.
@@ -86,11 +97,12 @@ path is filesystem-shaped. That was wrong - see
 that blob out. Also, `Settings` was a stub, so `server.properties` was never read at
 all until this fork implemented it. The original (wrong) reasoning follows.
 
-## The second piece of good news: the server's world storage is file-based
+## World storage: one blob, now written by Win64SaveFile
 
 The fear was that world persistence would mean driving `StorageManager`
 (`4J_Storage.lib`, prebuilt, callback-driven, normally pumped by the UI scenes)
-headless. It does not, at least not for loading.
+headless. It does not - but not for the reason originally given. `StorageManager`
+is bypassed entirely on this platform rather than being unnecessary.
 
 `MinecraftServer::initServer` is still, underneath 4J's changes, the Java dedicated
 server:
@@ -103,9 +115,11 @@ wstring levelName = settings->getString(L"level-name", L"world");
 m_bLoaded = loadLevel(new McRegionLevelStorageSource(File(L".")), levelName, seed, ...);
 ```
 
-**`server.properties` is already read, and the world is McRegion files relative to
-the working directory** - exactly like `minecraft_server.jar`. `StorageManager`'s
-save slots are the *client's* layer on top, not the server's own storage.
+**`server.properties` is already read**, but the "world is McRegion files"
+half of that claim is wrong. `McRegionLevelStorage` is a view over a single
+in-memory `ConsoleSaveFile` blob; `File(L".")` is not a directory the world lives
+in. As of 2026-08-28 that blob is persisted by `Win64SaveFile` to
+`<level-name>/savegame.dat`.
 
 Settings already honoured from `server.properties`:
 `level-name`, `gamemode`, `max-build-height`, `spawn-animals`, `spawn-npcs`.
@@ -113,13 +127,11 @@ Settings already honoured from `server.properties`:
 So a dedicated server does not need a save slot chosen for it. It needs a working
 directory and a `server.properties`.
 
-**The one remaining uncertainty is the save path, not the load path.** The tick loop
-calls both `level->save(true, progressRenderer)` and
-`levels[0]->saveToDisc(progressRenderer, ...)`, and it is not yet established which
-of those writes region files and which writes the console save blob through
-`StorageManager` (`StorageManager.GetSaveDisabled()` is consulted). The first real
-run answers this: if `<level-name>/` fills with `region/` files, persistence works
-as-is.
+**RESOLVED 2026-08-28.** `level->save(...)` writes into the in-memory blob;
+`levels[0]->saveToDisc(...)` is the one that flushes the blob outwards, via
+`DirectoryLevelStorage::flushSaveFile` -> `ConsoleSaveFileOriginal::Flush`. No
+region files are ever produced. `Flush` is where `Win64SaveFile::Write` now
+lives.
 
 ## The driver (implemented)
 
@@ -147,6 +159,18 @@ as-is.
 
 ## Watch out
 
+- The world is `<level-name>/savegame.dat`, a single compressed blob - not a
+  region directory. Renaming `level-name` in `server.properties` silently starts
+  a new world instead of failing.
+- `ServerLevel::saveToDisc` and `MinecraftServer::stopServer` still gate saving on
+  `StorageManager.GetSaveDisabled()`, `ProfileManager.IsSignedIn(...)` and
+  `IsFullVersion()`. Those objects are **uninitialised** on Windows x64, so those
+  answers come from zeroed global memory. They happen to permit saving today.
+  Check them first if saving stops.
+- `NetworkPlayerSockets::GetSessionIndex()` must stay in the same index space as
+  `CPlatformNetworkManagerSockets::GetPlayerByIndex()` - `canSendOnSlowQueue`
+  compares the two, and world streaming stops dead for any player whose index the
+  rotation cannot reach.
 - `HostGame(..., bOnlineGame, ...)` must be **true** or
   `CPlatformNetworkManagerSockets::StartListening()` is never called and nothing can
   connect.

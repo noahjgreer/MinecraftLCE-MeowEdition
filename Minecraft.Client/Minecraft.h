@@ -201,6 +201,36 @@ private:
 public:
 	LevelStorageSource *getLevelSource();
 	void setScreen(Screen *screen);
+
+	// 4J Meow - tick the active Screen when Minecraft::tick cannot.
+	//
+	// Minecraft::tick runs once per local player, so before a world is loaded
+	// it does not run at all - which is why the title screen was never ticked
+	// and never saw any input, even though GameRenderer has always rendered it.
+	// This is called every frame from the platform loop and does nothing when
+	// a player exists, so the in-game screens keep their single tick from
+	// Minecraft::tick and are not ticked twice.
+	void tickScreenNoPlayer();
+
+	// 4J Meow - render the active Screen when no level is loaded.
+	//
+	// GameRenderer::render is only reached through run_middle(), which the
+	// platform loop gates on app.GetGameStarted(). Before a world exists that
+	// never runs, so the pre-game frame is: clear to black, ui.render() for the
+	// Flash scenes, present. A native Screen therefore drew nothing at all and
+	// the menu looked frozen. This is the pre-game equivalent of that call.
+	void renderScreenNoLevel();
+
+	// 4J Meow - true once the native Screen UI has actually taken over from the
+	// Flash UI (i.e. the NavigateToNativeScreen intercept has fired).
+	//
+	// This is NOT the same question as "is Minecraft::screen non-NULL". A
+	// TitleScreen is constructed during startup, long before it is meant to be
+	// seen, while the Flash intro still owns the display. Ticking and rendering
+	// it from frame 1 drew it over the intro and ran GameRenderer before the
+	// renderer had ever run - which asserted in a zero-length texture buffer.
+	bool m_bNativeScreenActive;
+	void SetNativeScreenActive(bool bActive) { m_bNativeScreenActive = bActive; }
 private:
 	void checkGlError(const wstring& string);
 

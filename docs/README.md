@@ -39,14 +39,18 @@ run by an agent, so almost every entry should say so explicitly.
 - [Keyboard and mouse input (Windows x64)](systems/windows-keyboard-mouse-input.md) — how kb/m reaches a joypad-only game via a subclass of the prebuilt input manager, the three cursor modes, how menus and the inventory are pointed at, and why the button glyphs are still controller art.
 - [Text entry (Windows x64)](systems/windows-text-entry.md) — why every text field in the game did nothing on PC, how typing now goes straight into the on-screen field, and the in-game keyboard scene 4J left unfinished.
 - [Texture pipeline and the `.pck` format](systems/texture-pipeline-and-pck-format.md) — where textures actually live (not in Iggy), the dead runtime stitcher vs. 4J's hardcoded UV table, and the byte layout of the DLC archives.
-- [Dedicated server (Windows x64)](systems/dedicated-server.md) — why the server needs no local player, the client dependencies that survive, and the async save-storage problem that is the remaining work.
+- [Dedicated server (Windows x64)](systems/dedicated-server.md) — why the server needs no local player, the client dependencies that survive, and how the world blob is persisted now that StorageManager is bypassed.
 - [Dedicated server & direct connect (design)](systems/dedicated-server-and-direct-connect.md) — the two-function transport seam under `Socket`, why the packet layer is already TCP-ready, and the staged plan for an IP/port "Join Server" flow.
 - [Audio on Windows x64 (Miles)](systems/windows-x64-audio.md) — the Miles init chain, the CWD-relative soundbank/redist/music paths, and the required runtime file layout.
+- [LCE menu layouts (reference dump)](reference/lce-menu-layouts.txt) — authored geometry read out of the shipped `.swf` menus by `tools/swf_layout.py`; the source of truth for reproducing the console layout without Iggy.
+- [Native UI migration (off Iggy/Flash)](systems/native-ui-migration.md) — the Java `Screen`/`Button` stack that was never deleted, the three reasons it was dead, and the single choke point that ports one menu at a time.
 - [Profile / settings persistence (Windows x64)](systems/windows-x64-profile-persistence.md) — where settings actually live (the `GAME_SETTINGS` blob, not `Options`), and the `profile.dat` store that makes them survive a restart.
+- [Media archives (`Common/media/Media*.arc`)](systems/media-archives.md) — the game reads the `.arc`, not the loose media beside it; the format, the renamed entries, resolving art through `SymbolClass`, and `tools/media_arc.py`.
 
 ### Changes
 - [Dedicated server mode](changes/2026-08-26-dedicated-server.md) — `-dedicated` runs a hidden-window, console-logging, world-saving server; why it needed no local player and no save-slot machinery.
 - [Headless dedicated server](changes/2026-08-27-headless-dedicated-server.md) — the server stopped being a muted client: no audio, no UI, no rendering, a stdin `stop` console, a crash handler, and the reason worlds still do not persist.
+- [World persistence and multiplayer chunk streaming](changes/2026-08-28-world-persistence-and-multiplayer-chunk-streaming.md) — worlds now save, via a plain file instead of the never-initialised StorageManager; and why only one connected player ever received the world.
 - [Direct connect over TCP (stages 1-3)](changes/2026-08-26-direct-connect-stage1.md) — hosting on a port, joining by address, name-based identity, the F6 "Join a Server" screen and `-server`/`-name` on the command line.
 - [TCP transport for Windows x64 (stage 1)](changes/2026-08-26-tcp-transport-stage1.md) — the Winsock `TcpLink`/`TcpListener` that fills the two-function transport seam under `Socket`; compiles, not yet wired to anything.
 - [2026-08-26 — Retarget Windows x64 to MSVC v143 and get it linking](changes/2026-08-26-retarget-x64-to-v143.md) — first build of `Minecraft.Client.exe` without VS2012; includes an unresolved vendored-binary question.
@@ -60,7 +64,7 @@ run by an agent, so almost every entry should say so explicitly.
 - [2026-08-27 — Mouse-driven menus and a real mouse in the inventory](changes/2026-08-27-mouse-driven-menus-and-inventory-pointer.md) — the Vita's touch plumbing generalised into a mouse pointer; menu focus follows the cursor and the inventory pointer is the mouse.
 - [2026-08-27 – Sliders can be dragged with the mouse](changes/2026-08-27-mouse-slider-dragging.md) – clicking or dragging a menu slider sets its value, reusing the Vita touch path's SetRelativeSliderPos.
 - [2026-08-27 — Text entry happens inside the game](changes/2026-08-27-in-game-text-entry.md) — RequestKeyboard works on Windows at last; the "Join Server" Win32 popup is gone and UIScene_Keyboard is finished.
-- [2026-08-27 – Number keys select a hotbar slot](changes/2026-08-27-number-key-hotbar-selection.md) – 1-9 pick a hotbar slot directly on Windows x64; the wheel already cycled it.
+- [2026-08-27 – Number keys select a hotbar slot](changes/2026-08-27-number-key-hotbar-selection.md) – 1-9 pick a hotbar slot directly on Windows x64, plus the fix for the frame-rate-vs-tick-rate bug that was eating wheel notches and key presses.
 - [2026-08-26 - Client hung on the 4J logo](changes/2026-08-26-client-hang-on-logo.md) - an unguarded Win64DedicatedServer::Tick() silently started a dedicated server 60 frames into every client launch.
 - [2026-08-27 — Settings persist across restarts](changes/2026-08-27-settings-persistence.md) — the x64 profile stub never wrote anything; options now round-trip through `profile.dat`.
 
@@ -77,3 +81,6 @@ run by an agent, so almost every entry should say so explicitly.
   work and note the correction in your `changes/` entry.
 - **This is private source.** Do not paste source contents into external services when
   researching, and do not write anything here intended for public distribution.
+- [2026-08-27 — Native UI, slice 1: the title screen off Flash](changes/2026-08-27-native-ui-titlescreen.md) — the main menu is now a native `TitleScreen` behind `_MEOW_NATIVE_UI`; builds, unrun, and the pad cannot drive it yet.
+- [2026-08-27 — Meow Edition title logo](changes/2026-08-27-title-logo-swap.md) — the logo lives in `MediaWindows64.arc` as symbol `MenuTitle` (`skinHDWin.swf` id 180, 857x207), not in any PNG or loose SWF; three dead ends recorded, including why the 571x138 lookalike is the wrong character.
+- [2026-08-27 — Native UI migration paused; Flash/Iggy is the active UI again](changes/2026-08-27-native-ui-paused.md) — why it was stopped, the one define that turns it back on, and the layout-recovery tooling that outlived it.

@@ -231,9 +231,22 @@ class Mouse
 public:
 	static void create() {}
 	static void destroy() {}
+#ifdef _WINDOWS64
+	// 4J Meow - a real cursor position on Windows, so that the Screen/Button
+	// hover test in GameRenderer works. Defined in Win64KeyboardMouse.cpp
+	// because this header cannot reach the input manager.
+	//
+	// getY is bottom-up, matching the LWJGL original: GameRenderer flips it
+	// back with "screenHeight - getY() * screenHeight / height - 1", and that
+	// call site is shared with the console builds.
+	static int getX();
+	static int getY();
+	static bool isButtonDown(int iButton);
+#else
 	static int getX() { return 0; }
 	static int getY() { return 0; }
 	static bool isButtonDown(int) { return false; }
+#endif
 };
 
 class Display

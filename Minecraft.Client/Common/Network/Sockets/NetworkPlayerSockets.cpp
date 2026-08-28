@@ -17,7 +17,11 @@ NetworkPlayerSockets::NetworkPlayerSockets(const wstring& displayName, unsigned 
 	m_isLocal = isLocal;
 	m_isHost = isHost;
 	m_userIndex = userIndex;
-	m_sessionIndex = smallId;
+	// -1 until the manager stamps our position in its player list. It must NOT
+	// default to the smallId: MinecraftServer::canSendOnSlowQueue compares this
+	// against an index into that list, and smallIds are 1-based and never
+	// reused, so the two spaces do not line up. See ReindexPlayers().
+	m_sessionIndex = -1;
 }
 
 NetworkPlayerSockets::~NetworkPlayerSockets()

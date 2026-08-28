@@ -48,6 +48,9 @@
 #include "..\Minecraft.World\BiomeSource.h"
 #include "PlayerChunkMap.h"
 #include "Common\Telemetry\TelemetryManager.h"
+#ifdef _WINDOWS64
+#include "Windows64\Win64SaveFile.h"
+#endif
 
 #define DEBUG_SERVER_DONT_SPAWN_MOBS 0
 
@@ -403,6 +406,14 @@ bool MinecraftServer::loadLevel(LevelStorageSource *storageSource, const wstring
 	if( app.GetGameHostOption(eGameHostOption_BonusChest ) ) levelSettings->enableStartingBonusItems();
 
 	app.DebugPrintf("Server: level settings built, creating storage\n");
+
+#ifdef _WINDOWS64
+	// 4J Meow - point the plain-file save backend at this world before any
+	// ConsoleSaveFile is built, since the constructor reads the blob back in.
+	// This is the only place that knows the level name on both the client and
+	// the dedicated server. See Windows64/Win64SaveFile.h.
+	Win64SaveFile::SetWorldName( name );
+#endif
 
 	// 4J - temp - load existing level
 	shared_ptr<McRegionLevelStorage> storage = nullptr;

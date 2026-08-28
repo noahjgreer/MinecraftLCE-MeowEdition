@@ -32,6 +32,13 @@ namespace Win64CommandLine
 
 	// Dedicated server: -dedicated [-world <name>] [-seed <n>] [-port <n>] [-maxplayers <n>]
 	bool WantsDedicatedServer();
+
+	// 4J Meow - -flashui keeps the original Iggy/Flash menus (no native Screen
+	// intercept) and dumps each scene's live layout to meow_debug.log. This is
+	// how the console layout is recovered for the native reimplementation:
+	// tools/swf_layout.py reads positions out of the .swf, but control sizes
+	// only exist at runtime because the buttons are AS3 library instances.
+	bool WantsFlashUI();
 	const wchar_t *GetWorldName();
 	bool HasWorldName();
 	__int64 GetSeed();

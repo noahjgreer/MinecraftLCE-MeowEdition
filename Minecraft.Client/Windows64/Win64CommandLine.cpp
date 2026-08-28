@@ -13,6 +13,7 @@ namespace Win64CommandLine
 	static int		s_iServerPort			= MINECRAFT_DEFAULT_SERVER_PORT;
 
 	static bool		s_bDedicated			= false;
+	static bool		s_bFlashUI				= false;	// 4J Meow
 	static wchar_t	s_szWorldName[64]		= L"world";
 	static bool		s_bHasWorldName			= false;
 	static __int64	s_iSeed					= 0;
@@ -102,6 +103,15 @@ namespace Win64CommandLine
 			{
 				s_bDedicated = true;
 			}
+			else if (TokenIs(szToken, L"flashui"))
+			{
+				// 4J Meow - keep the original Iggy/Flash menus instead of the
+				// native Screen replacements, and dump each scene's authored
+				// layout to the log. Used to recover the console layout that
+				// the native screens have to reproduce - the .swf gives
+				// positions (see tools/swf_layout.py) but not control sizes.
+				s_bFlashUI = true;
+			}
 			else if (TokenIs(szToken, L"world"))
 			{
 				ReadToken(&psz, s_szWorldName, 64);
@@ -144,6 +154,7 @@ namespace Win64CommandLine
 	bool WantsDirectConnect()			{ return ( s_szServerAddress[0] != 0 && !s_bDedicated ); }
 
 	bool WantsDedicatedServer()			{ return s_bDedicated; }
+	bool WantsFlashUI()					{ return s_bFlashUI; }	// 4J Meow
 	const wchar_t *GetWorldName()		{ return s_szWorldName; }
 	bool HasWorldName()					{ return s_bHasWorldName; }
 	__int64 GetSeed()					{ return s_iSeed; }

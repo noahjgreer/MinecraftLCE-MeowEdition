@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "Windows64\MeowLog.h"		// 4J Meow - no-op on the console targets
 #include "Textures.h"
 #include "TexturePackRepository.h"
 #include "HttpTexture.h"
@@ -527,6 +528,21 @@ void Textures::loadTexture(BufferedImage *img, int id, bool blur, bool clamp)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     }
+
+	// 4J Meow - a texture whose file could not be found arrives here as a
+	// zero-sized image, and the intArray below then trips the
+	// assert(elements!=0) in arrayWithLength. In a Release build (which still
+	// defines asserts - there is no NDEBUG in the x64 configs) that is a modal
+	// dialog, and behind a fullscreen window a modal dialog is invisible and
+	// blocks the main thread: it looks exactly like a hang, with the last
+	// frame frozen on screen. Cost a long debugging session once.
+	//
+	// Fail loudly in the log and skip the upload instead.
+	if(img == NULL || img->getWidth() <= 0 || img->getHeight() <= 0)
+	{
+		MEOWLOG("[meow] Textures::loadTexture: missing or zero-sized image for texture id %d - skipping upload\n", id);
+		return;
+	}
 
     int w = img->getWidth();
     int h = img->getHeight();

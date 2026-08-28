@@ -2,6 +2,7 @@
 //
 
 #include "stdafx.h"
+#include "MeowLog.h"
 #include "Win64KeyboardMouse.h"
 #include "Win64CommandLine.h"
 #include "Win64DedicatedServer.h"
@@ -1234,7 +1235,26 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 #endif
 		if (!bDedicated)
 		{
+			// 4J Meow - tick the native Screen UI. Does nothing unless the
+			// native UI has taken over (see Minecraft::m_bNativeScreenActive),
+			// which currently requires _MEOW_NATIVE_UI to be defined.
+			pMinecraft->tickScreenNoPlayer();
+
 			ui.tick();
+
+			// 4J Meow - draw the native Screen. Needed here because GameRenderer
+			// is only reached via run_middle(), which is gated on
+			// app.GetGameStarted() a few lines above, so nothing draws a Screen
+			// before a world is loaded.
+			//
+			// BEFORE ui.render(), not after: Iggy renders through its own
+			// backend and leaves the pipeline and RenderManager's cached matrix
+			// state in a condition our draws do not survive. The code that used
+			// to save and restore render states around the UI render is in a
+			// dead #if 0 block. Drawing first also means that while a Flash
+			// scene is still up during the migration, Flash correctly wins.
+			pMinecraft->renderScreenNoLevel();
+
 			ui.render();
 		}
 #if 0

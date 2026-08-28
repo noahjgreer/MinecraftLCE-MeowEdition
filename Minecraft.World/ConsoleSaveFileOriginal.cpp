@@ -12,6 +12,12 @@
 #include "..\Minecraft.Client\Common\GameRules\LevelGenerationOptions.h"
 #include "..\Minecraft.World\net.minecraft.world.level.chunk.storage.h"
 
+#ifdef _WINDOWS64
+// 4J Meow - StorageManager was never initialised on this platform, so the save
+// blob is read from and written to a plain file instead. See Win64SaveFile.h.
+#include "..\Minecraft.Client\Windows64\Win64SaveFile.h"
+#endif
+
 
 #ifdef _XBOX
 #define RESERVE_ALLOCATION  MEM_RESERVE | MEM_LARGE_PAGES
@@ -56,7 +62,16 @@ ConsoleSaveFileOriginal::ConsoleSaveFileOriginal(const wstring &fileName, LPVOID
 	}
 
 	if( pvSaveData == NULL || fileSize == 0)
+#ifdef _WINDOWS64
+		// 4J Meow - StorageManager is not initialised on this platform and its
+		// GetSaveSize() always answers 0, which is why every launch generated a
+		// fresh world. Ask the plain-file backend instead; 0 still means "no
+		// save, generate a new world", so the behaviour when there is nothing
+		// on disk is unchanged.
+		fileSize = Win64SaveFile::GetSize();
+#else
 		fileSize = StorageManager.GetSaveSize();
+#endif
 
 	if( forceCleanSave )
 		fileSize = 0;
@@ -109,7 +124,16 @@ ConsoleSaveFileOriginal::ConsoleSaveFileOriginal(const wstring &fileName, LPVOID
 			AllocData = true;
 			StorageManager.GetSaveData( pvSaveData, &storageLength );
 #else
+#ifdef _WINDOWS64
+			// 4J Meow - see above. Read the blob straight off disk.
+			if( !Win64SaveFile::Read( pvSaveMem, &storageLength ) )
+			{
+				app.DebugPrintf("Win64SaveFile: failed to read %ls\n", Win64SaveFile::GetSavePath().c_str());
+				storageLength = 0;
+			}
+#else
 			StorageManager.GetSaveData( pvSaveMem, &storageLength );
+#endif
 #endif
 #ifdef __PS3__
 			StorageManager.FreeSaveData();
@@ -662,7 +686,14 @@ void ConsoleSaveFileOriginal::Flush(bool autosave, bool updateThumbnail )
 #else
 	// Attempt to allocate the required memory
 	// We do not own this, it belongs to the StorageManager
+#ifdef _WINDOWS64
+	// 4J Meow - StorageManager is not initialised on this platform, so we cannot
+	// borrow its buffer. Own one for the duration of the flush and free it at the
+	// end; freeWin64SaveBuffer below is the matching delete.
+	byte *compData = new byte[ compLength ];
+#else
 	byte *compData = (byte *)StorageManager.AllocateSaveData( compLength );
+#endif
 
 #ifdef __PSVITA__
 	// AP - make sure we always allocate just what is needed so it will only SAVE what is needed.
@@ -700,7 +731,11 @@ void ConsoleSaveFileOriginal::Flush(bool autosave, bool updateThumbnail )
 		compLength = compLength+8;
 
 		// Attempt to allocate the required memory
+#ifdef _WINDOWS64
+		compData = new byte[ compLength ];
+#else
 		compData = (byte *)StorageManager.AllocateSaveData( compLength );
+#endif
 	}
 #endif
 
@@ -783,12 +818,27 @@ void ConsoleSaveFileOriginal::Flush(bool autosave, bool updateThumbnail )
 
 	ReleaseSaveAccess();
 #elif (defined __PS3__ || defined __ORBIS__ || defined __PSVITA__ || defined _DURANGO || defined _WINDOWS64)
+#ifdef _WINDOWS64
+		// 4J Meow - StorageManager is not initialised on this platform, so the blob
+		// goes straight to <level-name>/savegame.dat. There is no save slot, no
+		// thumbnail and no metadata to attach - those are console save-UI concepts -
+		// so the images gathered above are simply unused here.
+		if( Win64SaveFile::Write( compData, compLength+8 ) )
+		{
+			app.DebugPrintf("Win64SaveFile: wrote %d bytes to %ls\n", compLength+8, Win64SaveFile::GetSavePath().c_str());
+		}
+		else
+		{
+			app.DebugPrintf("Win64SaveFile: FAILED to write %ls (error %d)\n", Win64SaveFile::GetSavePath().c_str(), GetLastError());
+		}
+#else
 		// set the icon and save image
 		StorageManager.SetSaveImages(pbThumbnailData,dwThumbnailDataSize,pbDataSaveImage,dwDataSizeSaveImage,bTextMetadata,iTextMetadataBytes);
 		app.DebugPrintf("Save thumbnail size %d\n",dwThumbnailDataSize);
 
 		// save the data
 		StorageManager.SaveSaveData( &ConsoleSaveFileOriginal::SaveSaveDataCallback, this );
+#endif
 #ifndef _CONTENT_PACKAGE
 		if( app.DebugSettingsOn())
 		{
@@ -797,6 +847,11 @@ void ConsoleSaveFileOriginal::Flush(bool autosave, bool updateThumbnail )
 				DebugFlushToFile(compData, compLength+8);
 			}
 		}
+#endif
+#ifdef _WINDOWS64
+		// 4J Meow - our buffer, our delete. See the allocation above.
+		delete [] compData;
+		compData = NULL;
 #endif
 		ReleaseSaveAccess();
 	}

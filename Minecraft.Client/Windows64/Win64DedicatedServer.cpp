@@ -23,6 +23,8 @@ namespace Win64DedicatedServer
 	static volatile bool	s_bStopRequested	= false;
 	static bool				s_bShutdownDone		= false;
 	static DWORD			s_dwLastStatusTick	= 0;
+	static volatile bool	s_bSaveRequested	= false;
+	static DWORD			s_dwLastAutosaveTick= 0;
 	static int				s_iLastPlayerCount	= -1;
 	static CRITICAL_SECTION	s_logLock;
 	static bool				s_bLogLockReady		= false;
@@ -30,6 +32,12 @@ namespace Win64DedicatedServer
 
 	// Status line cadence. Long enough not to be noise in a log file.
 	#define STATUS_INTERVAL_MS 60000
+
+	// 4J Meow - How often the world is written out while the server runs. Nothing
+	// else triggers a save on a dedicated server: the autosave the client gets is
+	// driven by the pause menu / XUI, which is not running here, so without this
+	// the only save would be the one on shutdown and a crash would cost the lot.
+	#define AUTOSAVE_INTERVAL_MS 300000
 
 	// Frames to let the game settle before starting the server. See Tick().
 	#define DEDICATED_START_DELAY_FRAMES 60
@@ -44,6 +52,26 @@ namespace Win64DedicatedServer
 	void RequestStop()
 	{
 		s_bStopRequested = true;
+	}
+
+	void RequestSave()
+	{
+		s_bSaveRequested = true;
+	}
+
+	// 4J Meow - Queue the save the same way the client's pause menu does.
+	//
+	// MinecraftServer's tick loop drains app.GetXuiServerAction() and performs the
+	// save on the server thread, which is the only thread allowed to walk the
+	// levels. Doing it here would race the tick. Note eXuiServerAction_AutoSaveGame
+	// falls through to eXuiServerAction_SaveGame on this platform - the separate
+	// autosave arm is #if'd to _XBOX_ONE / __ORBIS__ - so both write the world.
+	static void QueueServerSave()
+	{
+		MinecraftServer *pServer = MinecraftServer::getInstance();
+		if (pServer == NULL) return;
+
+		app.SetXuiServerAction(ProfileManager.GetPrimaryPad(), eXuiServerAction_AutoSaveGame);
 	}
 
 	// 4J Meow - the Java dedicated server's stdin console. 4J left the shape of
@@ -96,9 +124,14 @@ namespace Win64DedicatedServer
 				RequestStop();
 				return 0;
 			}
+			else if (_stricmp(pszCmd, "save") == 0 || _stricmp(pszCmd, "save-all") == 0)
+			{
+				Log("Console: save");
+				RequestSave();
+			}
 			else if (_stricmp(pszCmd, "help") == 0 || _stricmp(pszCmd, "?") == 0)
 			{
-				Log("Commands: stop, players, help");
+				Log("Commands: stop, save, players, help");
 			}
 			else if (_stricmp(pszCmd, "players") == 0 || _stricmp(pszCmd, "list") == 0)
 			{
@@ -511,6 +544,20 @@ namespace Win64DedicatedServer
 			Log("Players online: %d/%d", iPlayers, Win64CommandLine::GetMaxPlayers());
 			s_iLastPlayerCount = iPlayers;
 			s_dwLastStatusTick = dwNow;
+		}
+
+		if (s_bSaveRequested)
+		{
+			s_bSaveRequested = false;
+			s_dwLastAutosaveTick = dwNow;
+			Log("Saving world...");
+			QueueServerSave();
+		}
+		else if ((dwNow - s_dwLastAutosaveTick) >= AUTOSAVE_INTERVAL_MS)
+		{
+			s_dwLastAutosaveTick = dwNow;
+			Log("Autosaving world...");
+			QueueServerSave();
 		}
 	}
 

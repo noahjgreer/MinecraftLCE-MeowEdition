@@ -17,6 +17,7 @@ void Button::init(int id, int x, int y, int w, int h, const wstring& msg)
 {
 	active = true;
 	visible = true;
+	focused = false;	// 4J Meow
 
 	// this bit of code from original ctor
     this->id = id;
@@ -45,7 +46,8 @@ void Button::render(Minecraft *minecraft, int xm, int ym)
     glColor4f(1, 1, 1, 1);
 
 
-    bool hovered = xm >= x && ym >= y && xm < x + w && ym < y + h;
+    // 4J Meow - pad focus highlights exactly like mouse hover.
+    bool hovered = focused || (xm >= x && ym >= y && xm < x + w && ym < y + h);
     int yImage = getYImage(hovered);
 
     blit(x, y, 0, 46 + yImage * 20, w / 2, h);

@@ -1,0 +1,160 @@
+LCE menu layouts - live runtime dump
+====================================
+
+Captured with:  Minecraft.Client.exe -flashui
+(see Win64CommandLine::WantsFlashUI and UIScene::DumpLayout)
+
+These are the REAL console layouts, read out of the running Flash UI. They are
+the source of truth for reproducing each menu natively - tools/swf_layout.py
+gives positions from the .swf, but width/height only exist at runtime because
+the controls are AS3 library instances placed with no character id.
+
+Coordinates are in the movie's own space (see the "movie" size on each scene),
+which is what UIScene::getMovieWidth/getMovieHeight report. Scale to the render
+target the way UIControl does. Note the 1080 assets are the 720 ones at 1.5x.
+
+=== eUIScene_SaveMessage (sceneType 2)  movie 1920x1080  render 1920x1080  2 controls
+    Confirm                  x   653  y   778  w   615  h    60  vis 1
+    Description              x   623  y   526  w   675  h   222  vis 1
+
+=== eUIScene_MainMenu (sceneType 3)  movie 1920x1080  render 1920x1080  7 controls
+    Button1                  x   623  y   375  w   674  h    60  vis 1
+    Button2                  x   623  y   450  w   674  h    60  vis 1
+    Button3                  x   623  y   525  w   674  h    60  vis 1
+    Button4                  x   623  y   600  w   674  h    60  vis 1
+    Button5                  x   623  y   675  w   674  h    60  vis 1
+    Button6                  x   623  y   750  w   674  h    60  vis 1
+    Timer                    x   847  y   427  w   225  h   225  vis 0
+
+=== eUIScene_DLCMainMenu (sceneType 47)  movie 1920x1080  render 1920x1080  4 controls
+    OffersList               x   558  y   360  w   810  h   490  vis 1
+    OffersList_Title         x   558  y   316  w   804  h    39  vis 1
+    Timer                    x   850  y   492  w   225  h   225  vis 1
+    XboxLabel                x     0  y     0  w     0  h     0  vis 0
+
+=== eUIScene_HelpAndOptionsMenu (sceneType 15)  movie 1920x1080  render 1920x1080  7 controls
+    Button1                  x   623  y   375  w   674  h    60  vis 1
+    Button2                  x   623  y   450  w   674  h    60  vis 1
+    Button3                  x   623  y   525  w   674  h    60  vis 1
+    Button4                  x   623  y   600  w   674  h    60  vis 1
+    Button5                  x   623  y   675  w   674  h    60  vis 1
+    Button6                  x   623  y   750  w   674  h    60  vis 1
+    Button7                  x   623  y   750  w   674  h    60  vis 1
+
+=== eUIScene_SkinSelectMenu (sceneType 41)  movie 1920x1080  render 1920x1080  16 controls
+    SkinNamePlate            x   661  y   741  w   606  h    86  vis 1
+    SkinTitle1               x     5  y     5  w   195  h    39  vis 1
+    SkinTitle2               x     5  y    35  w     6  h     4  vis 1
+    SelectedPanel            x   796  y   679  w   326  h    43  vis 0
+    SelectedPanelLabel       x     3  y     2  w   135  h    39  vis 1
+    Timer                    x   848  y   428  w   338  h   337  vis 0
+    IggyCharacters           x   -92  y   235  w  2104  h   428  vis 1
+    iggy_Character0          x   604  y     0  w   241  h   295  vis 1
+    iggy_Character1          x   854  y    30  w   193  h   236  vis 1
+    iggy_Character2          x  1056  y    53  w   154  h   189  vis 1
+    iggy_Character3          x  1219  y    72  w   123  h   151  vis 1
+    iggy_Character4          x  1351  y    87  w    97  h   120  vis 1
+    iggy_Character5          x   402  y    30  w   193  h   236  vis 1
+    iggy_Character6          x   239  y    53  w   154  h   189  vis 1
+    iggy_Character7          x   107  y    72  w   123  h   151  vis 1
+    iggy_Character8          x     0  y    87  w    97  h   120  vis 1
+
+=== eUIScene_HowToPlayMenu (sceneType 17)  movie 1920x1080  render 1920x1080  1 controls
+    HowToList                x   622  y   322  w   675  h   555  vis 1
+
+=== eUIScene_HowToPlay (sceneType 16)  movie 1920x1080  render 1920x1080  31 controls
+    DynamicHtmlText          x   450  y   300  w     0  h     0  vis 1
+    Label1_9                 x   894  y   462  w   297  h    39  vis 0
+    Label2_9                 x   911  y   675  w   183  h    39  vis 0
+    Label3_9                 x  1249  y   674  w   156  h    39  vis 0
+    Label1_8                 x   957  y   460  w   174  h    39  vis 0
+    Label2_8                 x   976  y   680  w   225  h    39  vis 0
+    Label3_8                 x  1267  y   680  w   156  h    39  vis 0
+    Label1_10                x   993  y   326  w   132  h    39  vis 0
+    Label2_10                x   951  y   384  w   162  h    39  vis 0
+    Label3_10                x   951  y   528  w    69  h    39  vis 0
+    Label4_10                x  1001  y   588  w   156  h    39  vis 0
+    Label1_7                 x  1078  y   335  w    90  h    39  vis 0
+    Label2_7                 x  1078  y   672  w   156  h    39  vis 0
+    Label1_4                 x   952  y   434  w   228  h    39  vis 0
+    Label1_6                 x   985  y   330  w    90  h    39  vis 0
+    Label2_6                 x   985  y   573  w   156  h    39  vis 0
+    Label1_5                 x   988  y   596  w   156  h    39  vis 0
+    Label1_11                x   943  y   324  w   156  h    39  vis 0
+    Label2_11                x   984  y   571  w   156  h    39  vis 0
+    Label1_13                x   987  y   329  w   126  h    39  vis 0
+    Label2_13                x   987  y   604  w   156  h    39  vis 0
+    Label1_12                x   944  y   321  w   219  h    39  vis 0
+    Label2_12                x   985  y   624  w   156  h    39  vis 0
+    Label1_22                x   888  y   376  w   375  h    39  vis 0
+    Label2_22                x   919  y   576  w   315  h    75  vis 0
+    Label3_22                x  1254  y   568  w   156  h    39  vis 0
+    Label4_22                x  1011  y   683  w    84  h    27  vis 0
+    Label5_22                x     0  y     0  w     0  h     0  vis 0
+    Label1_21                x  1181  y   346  w   222  h    39  vis 0
+    Label2_21                x   992  y   574  w   312  h    39  vis 0
+    Label3_21                x   992  y   617  w   156  h    39  vis 0
+
+=== eUIScene_LoadOrJoinMenu (sceneType 30)  movie 1920x1080  render 1920x1080  7 controls
+    SavesList                x   240  y   355  w   683  h   495  vis 1
+    JoinList                 x   998  y   355  w   683  h   495  vis 1
+    SavesListTitle           x   240  y   310  w   171  h    39  vis 1
+    JoinListTitle            x   998  y   310  w   153  h    39  vis 1
+    NoGames                  x  1122  y   583  w   334  h    50  vis 1
+    SavesTimer               x   469  y   490  w   225  h   225  vis 0
+    JoinTimer                x  1227  y   490  w   225  h   225  vis 0
+
+=== eUIScene_CreateWorldMenu (sceneType 29)  movie 1920x1080  render 1920x1080  17 controls
+    TexturePackPanel         x   815  y   237  w   501  h   648  vis 1
+    TexturePackName          x   144  y    21  w   321  h    39  vis 1
+    TexturePackDescription   x    39  y   129  w   430  h   112  vis 1
+    Icon                     x    39  y    21  w    96  h    96  vis 1
+    ComparisonPic            x    39  y   402  w   435  h   216  vis 1
+    MainPanel                x   592  y   225  w   941  h   675  vis 1
+    WorldName                x    35  y    31  w   174  h    39  vis 1
+    EditWorldName            x    38  y    69  w   661  h    60  vis 1
+    Seed                     x     0  y     0  w     0  h     0  vis 0
+    EditSeed                 x     0  y     0  w     0  h     0  vis 0
+    RandomSeed               x     0  y     0  w     0  h     0  vis 0
+    TexturePackSelector      x    36  y   324  w   662  h   142  vis 1
+    GameModeToggle           x    36  y   143  w   660  h    60  vis 1
+    CheckboxOnline           x    41  y   447  w   215  h    39  vis 1
+    MoreOptions              x    36  y   501  w   660  h    60  vis 1
+    NewWorld                 x    36  y   578  w   660  h    60  vis 1
+    Difficulty               x    38  y   221  w   906  h    54  vis 1
+
+=== eUIScene_LaunchMoreOptionsMenu (sceneType 46)  movie 1920x1080  render 1920x1080  23 controls
+    LabelGame                x   715  y   373  w   201  h    39  vis 1
+    LabelWorld               x   342  y   365  w   210  h    39  vis 1
+    GameOptions              x   372  y   339  w   707  h   549  vis 0
+    CheckboxOnline           x     0  y   102  w   215  h    39  vis 1
+    CheckboxInviteOnly       x     0  y   147  w   203  h    39  vis 1
+    CheckboxAllowFoF         x     0  y   192  w   413  h    39  vis 1
+    CheckboxPVP              x     0  y   238  w   305  h    39  vis 1
+    CheckboxTrustSystem      x     0  y   281  w   257  h    39  vis 1
+    CheckboxFireSpreads      x     0  y   327  w   242  h    39  vis 1
+    CheckboxTNT              x     0  y   372  w   245  h    39  vis 1
+    CheckboxHostPrivileges   x     0  y   418  w   269  h    39  vis 1
+    CheckboxResetNether      x     0  y   464  w   242  h    39  vis 1
+    CheckboxDisableSaving    x     0  y   510  w   299  h    39  vis 1
+    WorldOptions             x   333  y   339  w   943  h   503  vis 1
+    Seed                     x    38  y   112  w   474  h    39  vis 1
+    EditSeed                 x    41  y   152  w   661  h    60  vis 1
+    RandomSeed               x    39  y   209  w   498  h    39  vis 1
+    WorldSize                x    38  y   262  w   162  h    39  vis 1
+    WorldSizeSlider          x    40  y   302  w   906  h    54  vis 1
+    CheckboxStructures       x    39  y   372  w   362  h    39  vis 1
+    CheckboxBonusChest       x    39  y   418  w   230  h    39  vis 1
+    CheckboxFlatWorld        x    39  y   464  w   281  h    39  vis 1
+    Description              x  1088  y   445  w     0  h     0  vis 1
+
+=== eUIScene_Keyboard (sceneType 63)  movie 1920x1080  render 1920x1080  9 controls
+    EnterTextLabel           x   629  y   445  w   630  h    50  vis 1
+    KeyboardTextInput        x   629  y   524  w   667  h    63  vis 1
+    Button_space             x   748  y   946  w   424  h    68  vis 1
+    Button_CursorLeft        x   280  y   643  w   135  h   218  vis 1
+    Button_CursorRight       x  1504  y   643  w   135  h   218  vis 1
+    Button_Caps              x   280  y   870  w   135  h   144  vis 1
+    Button_Done              x  1504  y   870  w   135  h   144  vis 1
+    Button_symbols           x   424  y   946  w   316  h    68  vis 1
+    Button_bspace            x  1180  y   946  w   316  h    68  vis 1

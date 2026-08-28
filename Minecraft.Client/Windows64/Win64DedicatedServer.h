@@ -11,8 +11,10 @@
 // hidden and, instead of a local player joining, only the server thread is started.
 // See CGameNetworkManager::StartDedicatedServer and docs/systems/dedicated-server.md.
 //
-// The world itself is plain McRegion files under the working directory, driven by
-// server.properties, exactly like the Java dedicated server.
+// The world is a single compressed blob - the console save-game format - written
+// to <level-name>/savegame.dat by Win64SaveFile, with level-name coming from
+// server.properties. It is NOT a directory of McRegion files; an early revision
+// of this comment claimed otherwise. See docs/systems/dedicated-server.md.
 
 namespace Win64DedicatedServer
 {
@@ -40,6 +42,10 @@ namespace Win64DedicatedServer
 	// Asks the server to save and stop. Safe to call from any thread - it only
 	// sets a flag, and Tick() does the work on the game thread.
 	void RequestStop();
+
+	// Asks the server to write the world out. Safe to call from any thread - it
+	// only sets a flag; Tick() queues the save and the server thread performs it.
+	void RequestSave();
 
 	// Halts the server so it saves, and waits for it to finish.
 	void Shutdown();

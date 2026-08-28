@@ -85,6 +85,29 @@ unsigned char CPlatformNetworkManagerSockets::AllocateSmallId()
 	return m_nextSmallId++;
 }
 
+// 4J Meow - Stamp each player with its position in m_players.
+//
+// MinecraftServer::canSendOnSlowQueue gates world streaming on
+//
+//     player->GetSessionIndex() == s_slowQueuePlayerIndex
+//
+// and cycleSlowQueueIndex only ever produces values in [0, GetPlayerCount()),
+// because it walks the list with GetPlayerByIndex. So GetSessionIndex has to
+// live in the same index space as GetPlayerByIndex. It previously returned the
+// smallId, which is 1-based and never reused, so with a host plus two joiners
+// the second joiner's index (3) could never come up in a rotation over {0,1,2}
+// and it never got a single chunk past the one the login path forces out.
+//
+// Positions shift when someone leaves, so this must run on every add and
+// remove. Callers hold m_playersLock.
+void CPlatformNetworkManagerSockets::ReindexPlayers()
+{
+	for( unsigned int i = 0; i < m_players.size(); i++ )
+	{
+		m_players[i]->SetSessionIndex( (int)i );
+	}
+}
+
 NetworkPlayerSockets *CPlatformNetworkManagerSockets::AddPeer(const wstring& displayName, bool isLocal, bool isHost, int userIndex, TcpLink *pLink)
 {
 	NetworkPlayerSockets *pPlayer = new NetworkPlayerSockets(displayName, AllocateSmallId(), isLocal, isHost, userIndex);
@@ -92,6 +115,7 @@ NetworkPlayerSockets *CPlatformNetworkManagerSockets::AddPeer(const wstring& dis
 
 	EnterCriticalSection(&m_playersLock);
 	m_players.push_back(pPlayer);
+	ReindexPlayers();
 	LeaveCriticalSection(&m_playersLock);
 
 	SystemFlagAddPlayer(pPlayer);
@@ -131,6 +155,7 @@ void CPlatformNetworkManagerSockets::RemovePeer(NetworkPlayerSockets *pPlayer)
 	}
 	if( m_pLocalPlayer == pPlayer ) m_pLocalPlayer = NULL;
 	if( m_pHostPlayer == pPlayer ) m_pHostPlayer = NULL;
+	ReindexPlayers();
 	LeaveCriticalSection(&m_playersLock);
 
 	// The Socket is owned by whoever called CreateSocket and is torn down by the

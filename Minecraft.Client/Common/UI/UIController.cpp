@@ -18,6 +18,16 @@
 #ifdef _UI_MOUSE_POINTER
 #include "..\..\Windows64\Win64KeyboardMouse.h"
 #endif
+#ifdef _WINDOWS64
+// 4J Meow - the -flashui scene layout dump. Independent of _MEOW_NATIVE_UI so
+// the dumper still works with the native UI switched off.
+#include "..\..\Windows64\MeowLog.h"
+#include "..\..\Windows64\Win64CommandLine.h"
+#endif
+#ifdef _MEOW_NATIVE_UI
+// 4J Meow - the native Screen classes that have replaced a Flash scene.
+#include "..\..\TitleScreen.h"
+#endif
 
 // 4J Stu - Enable this to override the Iggy Allocator
 //#define ENABLE_IGGY_ALLOCATOR
@@ -400,6 +410,37 @@ void UIController::tick()
 
 	if(m_accumulatedTicks == 0) tickInput();
 	m_accumulatedTicks = 0;
+
+#if defined(_WINDOWS64) && defined(_UI_POINTER_SUPPORT)
+	// 4J Meow - under -flashui, dump the front scene's real layout a couple of
+	// seconds after it settles. Delayed because ActionScript moves controls
+	// around after the scene is built, so an immediate dump reads the authored
+	// positions before the scene has finished arranging itself.
+	if(Win64CommandLine::WantsFlashUI())
+	{
+		static int s_iDumpTicks = 0;
+		static EUIScene s_eLastDumped = eUIScene_COUNT;
+
+		UIScene *pFront = m_groups[(int)eUIGroup_Fullscreen]->getCurrentScene();
+		if(pFront != NULL)
+		{
+			if(pFront->getSceneType() != s_eLastDumped)
+			{
+				s_eLastDumped = pFront->getSceneType();
+				s_iDumpTicks = 0;
+			}
+			else if(s_iDumpTicks >= 0)
+			{
+				s_iDumpTicks++;
+				if(s_iDumpTicks > 60)
+				{
+					pFront->DumpLayout();
+					s_iDumpTicks = -1;		// once per scene
+				}
+			}
+		}
+	}
+#endif
 
 	for(unsigned int i = 0; i < eUIGroup_COUNT; ++i)
 	{
@@ -1181,8 +1222,25 @@ void UIController::TickMousePointer()
 
 	// Decide what the cursor should be doing before anything else, so the mode
 	// is right even on the ticks where we then bail out below.
-	const bool bMenu		= GetMenuDisplayed(iPad);
+	bool bMenu				= GetMenuDisplayed(iPad);
 	const bool bOwnPointer	= (pScene != NULL) && pScene->hasOwnPointer();
+
+#ifdef _MEOW_NATIVE_UI
+	// 4J Meow - a native Screen is a menu too, even though the Flash UI knows
+	// nothing about it and has just set MenuDisplayed false for every pad on
+	// its way out through CloseAllPlayersScenes.
+	//
+	// Without this the cursor stays in mouse-look mode: hidden, clipped and
+	// parked on the window centre. IsPointerActive() is then false, so
+	// Screen::getPointerPos bails every frame and no click ever reaches a
+	// Button. The screen renders perfectly and is completely dead - which is
+	// indistinguishable from a hang, and was read as one twice.
+	{
+		Minecraft *pMinecraft = Minecraft::GetInstance();
+		if(pMinecraft != NULL && pMinecraft->m_bNativeScreenActive) bMenu = true;
+	}
+#endif
+
 	Win64Input::UpdatePointerMode(bMenu, bOwnPointer);
 
 	if(!Win64Input::IsPointerActive() || pScene == NULL || !pScene->canHandleInput())
@@ -1692,8 +1750,67 @@ void UIController::unregisterSubstitutionTexture(const wstring &textureName, boo
 }
 
 // NAVIGATION
+#ifdef _MEOW_NATIVE_UI
+// 4J Meow - added. Returns true if this scene has been ported to a native
+// Screen and the navigation has been handled here.
+bool UIController::NavigateToNativeScreen(int iPad, EUIScene scene)
+{
+	Minecraft *pMinecraft = Minecraft::GetInstance();
+	if(pMinecraft == NULL) return false;
+
+	// 4J Meow - -flashui keeps the original Flash menus, so their real layout
+	// can be dumped and reproduced. See Win64CommandLine::WantsFlashUI.
+	if(Win64CommandLine::WantsFlashUI()) return false;
+
+	switch(scene)
+	{
+	case eUIScene_MainMenu:
+		// Deliberately does NOT call CloseUIScenes: every caller that reaches
+		// here has already been through NavigateToHomeMenu, which calls
+		// CloseAllPlayersScenes and closes every group synchronously. Closing
+		// again from inside a scene's own ActionScript button callback is
+		// redundant and re-entrant.
+		//
+		// Also deliberately does not touch SetMenuDisplayed. Telling the input
+		// layer that no menu is up puts the cursor into mouse-look mode -
+		// hidden, clipped and parked on the window centre every frame - which
+		// is exactly wrong for a menu you are meant to click on.
+		MEOWLOG("[meow] intercept MainMenu: calling setScreen\n");
+		pMinecraft->setScreen(new TitleScreen());
+		// Only from here on may the native Screen be ticked and drawn. Before
+		// this the Flash intro owns the display, even though a TitleScreen
+		// object has existed since startup.
+		pMinecraft->SetNativeScreenActive(true);
+		MEOWLOG("[meow] intercept MainMenu: setScreen returned\n");
+		return true;
+
+	default:
+		break;
+	}
+
+	return false;
+}
+#endif
+
 bool UIController::NavigateToScene(int iPad, EUIScene scene, void *initData, EUILayer layer, EUIGroup group)
 {
+#ifdef _MEOW_NATIVE_UI
+	// 4J Meow - the native-UI intercept.
+	//
+	// Menus are being moved off Iggy/Flash and back onto the Java-derived
+	// Screen classes one at a time. Rather than chase down and edit every
+	// call site that navigates to a given scene, a scene that has a native
+	// replacement is caught here, at the single choke point every navigation
+	// goes through, and turned into a setScreen instead.
+	//
+	// The Flash stack for the group is torn down first, otherwise the scene
+	// being replaced stays on screen underneath the new one.
+	//
+	// Add a case here as each menu is ported; when the list is complete this
+	// function - and the rest of Common/UI - goes away.
+	if(NavigateToNativeScreen(iPad, scene)) return true;
+#endif
+
 	// if you're trying to navigate to the inventory,the crafting, pause or game info or any of the trigger scenes and there's already a menu up (because you were pressing a few buttons at the same time) then ignore the navigate
 	if(GetMenuDisplayed(iPad))
 	{

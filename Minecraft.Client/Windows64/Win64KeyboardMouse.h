@@ -133,9 +133,18 @@ namespace Win64Input
 	bool IsMouseButtonDown(int iButton);
 	bool MouseButtonWentDown(int iButton);
 
-	// Number row / numpad hotbar selection. Returns the 0-based slot (0-8) that
-	// was pressed this tick, if any. Read once a tick by Minecraft::tickInput.
-	bool GetHotbarSlot(int &iSlot);
+	// Hotbar impulses, consumed once per *game tick* by Minecraft::tick.
+	//
+	// Both pend rather than living in the per-frame snapshot: Tick() runs per
+	// rendered frame and the gameplay input code runs at 20Hz, so a per-frame
+	// edge is usually gone before the game tick that would have read it.
+	//
+	// ConsumeHotbarSlot returns the 0-based slot (0-8) a number key selected.
+	// ConsumeWheelNotch returns one pending wheel notch as -1 / 0 / +1,
+	// positive being wheel-up/away.
+	bool ConsumeHotbarSlot(int &iSlot);
+	int  ConsumeWheelNotch();
+	void ClearWheelNotches();
 
 	// True when the pointer is live: kb/m in use and not in look mode.
 	bool IsPointerActive();

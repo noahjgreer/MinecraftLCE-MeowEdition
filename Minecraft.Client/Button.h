@@ -14,6 +14,11 @@ public:
     bool active;
     bool visible;
 
+	// 4J Meow - pad/keyboard focus. The Java original was mouse-only and had no
+	// concept of a focused button; a controller could not drive a Screen at all.
+	// Rendered the same way as mouse hover.
+	bool focused;
+
     Button(int id, int x, int y, const wstring& msg);
     Button(int id, int x, int y, int w, int h, const wstring& msg);
 	void init(int id, int x, int y, int w, int h, const wstring& msg);	// 4J - added
