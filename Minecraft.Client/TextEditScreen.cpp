@@ -11,7 +11,11 @@
 #include "..\Minecraft.World\net.minecraft.world.level.tile.h"
 
 
-const wstring TextEditScreen::allowedChars = SharedConstants::acceptableLetters;;
+// 4J Meow - same static initialisation order bug ChatScreen had: this copy is
+// taken before SharedConstants::staticCtor() fills the table in, so it is empty
+// for the whole run and the test below would reject every character. This
+// screen is currently unreachable (its only call site in LocalPlayer.cpp is
+// commented out), so it was never noticed. Read at point of use instead.
 
 TextEditScreen::TextEditScreen(shared_ptr<SignTileEntity> sign)
 {
@@ -66,7 +70,8 @@ void TextEditScreen::keyPressed(wchar_t ch, int eventKey)
 	{
         temp = temp.substr(0, temp.length() - 1);
     }
-    if (allowedChars.find(ch) != wstring::npos && temp.length() < 15)
+	const wstring &allowedChars = SharedConstants::acceptableLetters;
+    if ((allowedChars.empty() || allowedChars.find(ch) != wstring::npos) && temp.length() < 15)
 	{
         temp += ch;
     }

@@ -3,6 +3,8 @@
 #include "..\Minecraft.World\Mth.h"
 #include "..\Minecraft.World\Entity.h"
 #include "ModelPart.h"
+#include "Common\CPM\CPMManager.h"
+#include "Common\CPM\CPMModel.h"
 
 // 4J added 
 
@@ -62,6 +64,8 @@ void HumanoidModel::_init(float g, float yOffset, int texWidth, int texHeight)
 {
 	this->texWidth = texWidth;
 	this->texHeight = texHeight;
+
+	cpmEnabled = false;
 
 	m_fYOffset=yOffset;
     cloak = new ModelPart(this, 0, 0);
@@ -170,13 +174,49 @@ void HumanoidModel::render(shared_ptr<Entity> entity, float time, float r, float
 	}
 	else
 	{
-		head->render(scale, usecompiled,(m_uiAnimOverrideBitmask&(1<<eAnim_DisableRenderHead))>0);
-		body->render(scale, usecompiled,(m_uiAnimOverrideBitmask&(1<<eAnim_DisableRenderTorso))>0);
-		arm0->render(scale, usecompiled,(m_uiAnimOverrideBitmask&(1<<eAnim_DisableRenderArm0))>0);
-		arm1->render(scale, usecompiled,(m_uiAnimOverrideBitmask&(1<<eAnim_DisableRenderArm1))>0);
-		leg0->render(scale, usecompiled,(m_uiAnimOverrideBitmask&(1<<eAnim_DisableRenderLeg0))>0);
-		leg1->render(scale, usecompiled,(m_uiAnimOverrideBitmask&(1<<eAnim_DisableRenderLeg1))>0);
-		hair->render(scale, usecompiled,(m_uiAnimOverrideBitmask&(1<<eAnim_DisableRenderHair))>0);
+		// CPM - a custom player model replaces or augments the vanilla bones.
+		// arm0/leg0 are the right limbs and arm1/leg1 the left ones, matching
+		// the pivot positions set in _init.
+		bool cpmActive = cpmEnabled && CPMManager::beginEntity(entity.get(), r);
+		if (cpmActive) CPMManager::bindActiveTexture();
+
+		bool hideHead = (m_uiAnimOverrideBitmask&(1<<eAnim_DisableRenderHead))>0;
+		bool hideBody = (m_uiAnimOverrideBitmask&(1<<eAnim_DisableRenderTorso))>0;
+		bool hideArm0 = (m_uiAnimOverrideBitmask&(1<<eAnim_DisableRenderArm0))>0;
+		bool hideArm1 = (m_uiAnimOverrideBitmask&(1<<eAnim_DisableRenderArm1))>0;
+		bool hideLeg0 = (m_uiAnimOverrideBitmask&(1<<eAnim_DisableRenderLeg0))>0;
+		bool hideLeg1 = (m_uiAnimOverrideBitmask&(1<<eAnim_DisableRenderLeg1))>0;
+		bool hideHair = (m_uiAnimOverrideBitmask&(1<<eAnim_DisableRenderHair))>0;
+
+		if (cpmActive)
+		{
+			hideHead = CPMManager::renderPart(CPM_PP_HEAD,      head, scale) || hideHead;
+			hideBody = CPMManager::renderPart(CPM_PP_BODY,      body, scale) || hideBody;
+			hideArm0 = CPMManager::renderPart(CPM_PP_RIGHT_ARM, arm0, scale) || hideArm0;
+			hideArm1 = CPMManager::renderPart(CPM_PP_LEFT_ARM,  arm1, scale) || hideArm1;
+			hideLeg0 = CPMManager::renderPart(CPM_PP_RIGHT_LEG, leg0, scale) || hideLeg0;
+			hideLeg1 = CPMManager::renderPart(CPM_PP_LEFT_LEG,  leg1, scale) || hideLeg1;
+			CPMManager::renderCustomRoot(scale);
+
+			// The hat layer is registered in CPM with a null part
+			// (RedirectHolderPlayer: `model.hat` -> null, setCopyFrom(head)),
+			// and ModelRenderManager.render returns without drawing anything
+			// for a null part whenever a model is loaded. So a custom model
+			// suppresses the vanilla hat outright - not only when it hides the
+			// head - otherwise `hair`, which is the same box inflated by 0.5,
+			// is left floating over the model wearing its texture.
+			hideHair = true;
+		}
+
+		head->render(scale, usecompiled, hideHead);
+		body->render(scale, usecompiled, hideBody);
+		arm0->render(scale, usecompiled, hideArm0);
+		arm1->render(scale, usecompiled, hideArm1);
+		leg0->render(scale, usecompiled, hideLeg0);
+		leg1->render(scale, usecompiled, hideLeg1);
+		hair->render(scale, usecompiled, hideHair);
+
+		if (cpmActive) CPMManager::endEntity();
 	}
 }
 

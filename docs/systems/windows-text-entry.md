@@ -209,3 +209,24 @@ to an Iggy movie that can be destroyed underneath it.
 | `Common/UI/UIController.cpp` | ticks the session before the key pass; `GetActiveScene` / `IsSceneLive` |
 | `Common/UI/UIScene_Keyboard.cpp` | the on-screen keyboard scene, finished |
 | `Common/UI/UIScene_MainMenu.cpp` | "Join Server" as two chained requests |
+
+## In-game chat
+
+Chat is a separate path from everything above. It does not go through
+`RequestKeyboard` or `UITextEditor` at all: it opens the game's own `ChatScreen`
+(the Java-derived `Screen` stack — see `native-ui-migration.md`), which owns its own
+message buffer and draws its own line.
+
+    T  /  (Win64KeyboardMouse: pends a chat request)
+        -> Minecraft::tick collects it
+        -> setScreen(new ChatScreen(prefill))
+        -> ChatScreen::init calls Win64Input::SetTextInputActive(true)
+        -> Screen::updateEvents drains typed chars -> ChatScreen::keyPressed
+
+What the two paths share is the `SetTextInputActive` flag and the WM_CHAR queue.
+The flag is what makes `Screen::updateEvents` deliver key events at all: only a
+screen that has claimed the keyboard for text receives them, because the base
+`Screen::keyPressed` closes the screen on Escape and delivering that to every screen
+would fight the pause menu.
+
+See `changes/2026-08-28-in-game-chat-keyboard.md`.

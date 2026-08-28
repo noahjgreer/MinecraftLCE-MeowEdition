@@ -5,6 +5,8 @@
 #include "ModelPart.h"
 #include "LocalPlayer.h"
 #include "MultiPlayerLocalPlayer.h"
+#include "Common\CPM\CPMManager.h"
+#include "Common\CPM\CPMModel.h"
 #include "entityRenderDispatcher.h"
 #include "..\Minecraft.World\net.minecraft.world.entity.h"
 #include "..\Minecraft.World\net.minecraft.world.entity.player.h"
@@ -32,6 +34,8 @@ const wstring PlayerRenderer::MATERIAL_NAMES[5] = { L"cloth", L"chain", L"iron",
 PlayerRenderer::PlayerRenderer() : MobRenderer( new HumanoidModel(0), 0.5f )
 {
     humanoidModel = (HumanoidModel *) model;
+    // CPM draws only on the main body model, never on the armour layers.
+    humanoidModel->cpmEnabled = true;
 
     armorParts1 = new HumanoidModel(1.0f);
     armorParts2 = new HumanoidModel(0.5f);
@@ -529,15 +533,40 @@ void PlayerRenderer::scale(shared_ptr<Mob> player, float a)
 
 void PlayerRenderer::renderHand()
 {
-	humanoidModel->m_uiAnimOverrideBitmask = Minecraft::GetInstance()->player->getAnimOverrideBitmask();
+	const float scale = 1 / 16.0f;
+	shared_ptr<MultiplayerLocalPlayer> localPlayer = Minecraft::GetInstance()->player;
+
+	humanoidModel->m_uiAnimOverrideBitmask = localPlayer->getAnimOverrideBitmask();
 	armorParts1->eating = armorParts2->eating = humanoidModel->eating = humanoidModel->idle = false;
     humanoidModel->attackTime = 0;
-    humanoidModel->setupAnim(0, 0, 0, 0, 0, 1 / 16.0f);
+    humanoidModel->setupAnim(0, 0, 0, 0, 0, scale);
+
 	// 4J-PB - does this skin have its arm0 disabled? (Dalek, etc)
-	if((humanoidModel->m_uiAnimOverrideBitmask&(1<<HumanoidModel::eAnim_DisableRenderArm0))==0)
+	bool hideArm = (humanoidModel->m_uiAnimOverrideBitmask&(1<<HumanoidModel::eAnim_DisableRenderArm0)) != 0;
+
+	// 4J Meow - CPM: the first person hand is the model's own arm, not Steve's.
+	// arm0 is the right arm (see its pivot in HumanoidModel::_init), which is
+	// the one LCE shows in first person.
+	//
+	// setupAnim above has already placed arm0 for the hand pose, and
+	// renderPart positions the custom cubes from that same transform, so the
+	// two stay together. It also reports whether the model hides the vanilla
+	// arm, in which case only the custom cubes are drawn.
+	bool cpmActive = CPMManager::beginEntity(localPlayer.get(), 0.0f);
+	if (cpmActive)
 	{
-		humanoidModel->arm0->render(1 / 16.0f,true);
+		// The caller bound the player skin and cleared the bind cache just
+		// before calling us, so this actually takes effect.
+		CPMManager::bindActiveTexture();
+		hideArm = CPMManager::renderPart(CPM_PP_RIGHT_ARM, humanoidModel->arm0, scale) || hideArm;
 	}
+
+	if (!hideArm)
+	{
+		humanoidModel->arm0->render(scale, true);
+	}
+
+	if (cpmActive) CPMManager::endEntity();
 }
 
 void PlayerRenderer::setupPosition(shared_ptr<Mob> _mob, double x, double y, double z)

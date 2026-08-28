@@ -31,6 +31,7 @@
 // 4J Added
 #include "..\Minecraft.World\net.minecraft.world.item.crafting.h"
 #include "Options.h"
+#include "Common\CPM\CPMNet.h"
 
 Random PlayerConnection::random;
 
@@ -55,6 +56,13 @@ PlayerConnection::PlayerConnection(MinecraftServer *server, Connection *connecti
 	this->player = player;
 //	player->connection = this;		// 4J - moved out as we can't assign in a ctor
 	InitializeCriticalSection(&done_cs);
+
+	// CPM - bring the joining player up to date with the models already in use.
+	{
+		std::vector<shared_ptr<CustomPayloadPacket> > sync;
+		CPMNet::buildJoinSync(sync);
+		for (size_t i = 0; i < sync.size(); i++) send(sync[i]);
+	}
 
 	m_bCloseOnTick = false;
 	m_bWasKicked = false;
@@ -1434,6 +1442,10 @@ void PlayerConnection::handlePlayerAbilities(shared_ptr<PlayerAbilitiesPacket> p
 
 void PlayerConnection::handleCustomPayload(shared_ptr<CustomPayloadPacket> customPayloadPacket)
 {
+	// CPM model sync: the server validates and relays it to every player.
+	if (CPMNet::handleServer(server, player != NULL ? player->name : wstring(),
+	                         customPayloadPacket.get())) return;
+
 #if 0
 	if (CustomPayloadPacket.CUSTOM_BOOK_PACKET.equals(customPayloadPacket.identifier))
 	{

@@ -51,6 +51,7 @@
 #include "PS3/Network/SonyVoiceChat.h"
 #endif
 #include "DLCTexturePack.h"
+#include "Common\CPM\CPMNet.h"
 #ifdef _WINDOWS64
 #include "Common\Network\Sockets\NetworkPlayerSockets.h"
 #include "Common\Network\Sockets\PlatformNetworkManagerSockets.h"
@@ -195,6 +196,9 @@ void ClientConnection::handleLogin(shared_ptr<LoginPacket> packet)
 	{
 		Minecraft::GetInstance()->progressRenderer->progressStagePercentage((eCCLoginReceived * 100)/ (eCCConnected));
 	}
+
+	// CPM - announce our own model now that we are on the server.
+	CPMNet::onClientJoined(m_userIndex);
 
 	// 4J-PB - load the local player skin (from the global title user storage area) if there is one
 	// the primary player on the host machine won't have a qnet player from the socket
@@ -3186,6 +3190,9 @@ void ClientConnection::handleSoundEvent(shared_ptr<LevelSoundPacket> packet)
 
 void ClientConnection::handleCustomPayload(shared_ptr<CustomPayloadPacket> customPayloadPacket)
 {
+	// CPM model sync arrives on its own channel.
+	if (CPMNet::handleClient(customPayloadPacket.get())) return;
+
 	if (CustomPayloadPacket::TRADER_LIST_PACKET.compare(customPayloadPacket->identifier) == 0)
 	{
 		ByteArrayInputStream bais(customPayloadPacket->data);

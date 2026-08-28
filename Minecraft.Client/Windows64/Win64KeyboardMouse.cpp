@@ -97,6 +97,7 @@ namespace
 	// Player::ullButtonsPressed does for pad button presses.
 	int		s_wheelPending		= 0;	// notches, signed: + is up/away
 	int		s_pendingHotbarSlot	= -1;	// 0-based, -1 for none
+	int		s_pendingChat		= 0;	// 0 none, 1 plain, 2 opened with '/'
 
 	bool	s_inUse			= false;		// has the player touched kb/mouse?
 	bool	s_hasFocus		= true;
@@ -494,6 +495,22 @@ namespace Win64Input
 				s_pendingHotbarSlot = iVirtualKey - '1';
 			else if (iVirtualKey >= VK_NUMPAD1 && iVirtualKey <= VK_NUMPAD9)
 				s_pendingHotbarSlot = iVirtualKey - VK_NUMPAD1;
+
+			// T and / open chat, as in Java Edition. Suppressed while a text
+			// field owns the keyboard, or typing "t" into a world name would
+			// also try to open chat underneath it.
+			//
+			// VK_OEM_2 is '/' on a US layout. It is the wrong physical key on
+			// some others; T always works, and a player on such a layout can
+			// press T and then type the slash.
+			// The menu test matters as well as the text one: the request is
+			// only collected during gameplay, so a T pressed in a menu would
+			// otherwise sit pending and open chat on the way back out.
+			if (!IsTextInputActive() && !IsMenuDisplayed(0))
+			{
+				if (iVirtualKey == 'T')				s_pendingChat = 1;
+				else if (iVirtualKey == VK_OEM_2)	s_pendingChat = 2;
+			}
 		}
 
 		s_keyDown[iVirtualKey] = true;
@@ -706,6 +723,15 @@ namespace Win64Input
 
 		iSlot = s_pendingHotbarSlot;
 		s_pendingHotbarSlot = -1;
+		return true;
+	}
+
+	bool ConsumeChatRequest(bool &bSlash)
+	{
+		if (s_pendingChat == 0) return false;
+
+		bSlash = (s_pendingChat == 2);
+		s_pendingChat = 0;
 		return true;
 	}
 

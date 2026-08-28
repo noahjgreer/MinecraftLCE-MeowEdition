@@ -143,6 +143,14 @@ namespace Win64Input
 	// ConsumeWheelNotch returns one pending wheel notch as -1 / 0 / +1,
 	// positive being wheel-up/away.
 	bool ConsumeHotbarSlot(int &iSlot);
+
+	// Chat. LCE has no chat action - the console builds never had typed chat -
+	// so this does not go through the 4J_Input action table at all; it pends
+	// like the hotbar keys and is collected by Minecraft::tick.
+	//
+	// bSlash is true when the player opened chat with '/', in which case the
+	// screen starts with a '/' already typed, as it does in Java Edition.
+	bool ConsumeChatRequest(bool &bSlash);
 	int  ConsumeWheelNotch();
 	void ClearWheelNotches();
 

@@ -196,6 +196,40 @@ void Screen::updateEvents()
 
 	s_bWasDown = bDown;
 
+	// 4J Meow - keyboardEvent() was left a TODO: nothing ever called keyPressed
+	// on Windows, so a Screen that reads text (ChatScreen) could not be typed
+	// into at all.
+	//
+	// Only screens that have claimed the keyboard for text get key events.
+	// Every other Screen is driven by tickMenuInput below, and the base
+	// Screen::keyPressed closes on Escape - which would fight the pause menu
+	// and the menu-cancel action if it were delivered unconditionally.
+	if(Win64Input::IsTextInputActive())
+	{
+		wchar_t ch;
+		while(Win64Input::ConsumeTypedChar(ch))
+		{
+			// WM_CHAR delivers these as control characters; the Screen API
+			// wants the key code beside the character.
+			int iEventKey = 0;
+			switch(ch)
+			{
+			case 0x1B:	iEventKey = Keyboard::KEY_ESCAPE;	break;
+			case 0x0D:
+			case 0x0A:	iEventKey = Keyboard::KEY_RETURN;	break;
+			case 0x08:	iEventKey = Keyboard::KEY_BACK;		break;
+			default:	break;
+			}
+
+			keyPressed(ch, iEventKey);
+
+			// keyPressed can close the screen (Escape, or Return committing a
+			// chat message). Anything still queued belongs to whatever comes
+			// next, not to a screen that is already gone.
+			if(minecraft != NULL && minecraft->screen != this) break;
+		}
+	}
+
 	// Pad / keyboard navigation, so a Screen is drivable without a mouse.
 	tickMenuInput();
 #endif

@@ -16,6 +16,9 @@ public:
 	float eating_t;			// 4J added
 	float eating_swing;	// 4J added
 	unsigned int m_uiAnimOverrideBitmask; // 4J added
+	// CPM - set only on PlayerRenderer's main humanoid model, so the armour
+	// layers (which are also HumanoidModels) do not draw the custom model again.
+	bool cpmEnabled;
 	float m_fYOffset; // 4J added
 	enum animbits
 	{

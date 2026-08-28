@@ -46,8 +46,11 @@ run by an agent, so almost every entry should say so explicitly.
 - [Native UI migration (off Iggy/Flash)](systems/native-ui-migration.md) — the Java `Screen`/`Button` stack that was never deleted, the three reasons it was dead, and the single choke point that ports one menu at a time.
 - [Profile / settings persistence (Windows x64)](systems/windows-x64-profile-persistence.md) — where settings actually live (the `GAME_SETTINGS` blob, not `Options`), and the `profile.dat` store that makes them survive a restart.
 - [Media archives (`Common/media/Media*.arc`)](systems/media-archives.md) — the game reads the `.arc`, not the loose media beside it; the format, the renamed entries, resolving art through `SymbolClass`, and `tools/media_arc.py`.
+- [Custom Player Models (CPM)](systems/custom-player-models.md) — the ported subset of the CustomPlayerModels mod: the `.cpmmodel` wire format and its encoding traps, how the cube tree hangs off the vanilla bones, the pose-triggered animation runtime, and the chunked model sync between players.
 
 ### Changes
+- [In-game chat opens with T and /](changes/2026-08-28-in-game-chat-keyboard.md) — LCE has no chat action and `Screen::keyPressed` was never called on Windows; wires up the intact `ChatScreen` and fixes an always-true character filter.
+- [Custom Player Models port](changes/2026-08-28-custom-player-models-port.md) — geometry, animation and player-to-player model sync ported from the Java mod; why the in-game editor was not, and what has and has not been verified.
 - [Dedicated server mode](changes/2026-08-26-dedicated-server.md) — `-dedicated` runs a hidden-window, console-logging, world-saving server; why it needed no local player and no save-slot machinery.
 - [Headless dedicated server](changes/2026-08-27-headless-dedicated-server.md) — the server stopped being a muted client: no audio, no UI, no rendering, a stdin `stop` console, a crash handler, and the reason worlds still do not persist.
 - [World persistence and multiplayer chunk streaming](changes/2026-08-28-world-persistence-and-multiplayer-chunk-streaming.md) — worlds now save, via a plain file instead of the never-initialised StorageManager; and why only one connected player ever received the world.

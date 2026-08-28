@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "Common\CPM\CPMManager.h"
 #ifdef _WINDOWS64
 #include "Windows64\MeowLog.h"
 #include <typeinfo>			// 4J Meow - screen names in the diagnostic log
@@ -36,6 +37,7 @@
 #include "Windows64/Win64DedicatedServer.h"
 #endif
 #include "InventoryScreen.h"
+#include "ChatScreen.h"
 #include "InBedChatScreen.h"
 #include "AchievementPopup.h"
 #include "Input.h"
@@ -2329,6 +2331,9 @@ void Minecraft::tick(bool bFirst, bool bUpdateTextures)
 	// 4J added
 	if( bFirst ) levelRenderer->destroyedTileManager->tick();
 
+	// CPM - advances the custom model animation clock once per client tick.
+	if( bFirst ) CPMManager::tick();
+
 	gui->tick();
 	gameRenderer->pick(1);
 #if 0
@@ -3405,6 +3410,18 @@ void Minecraft::tick(bool bFirst, bool bUpdateTextures)
 					gameMode->getTutorial()->onSelectedItemChanged(player->inventory->getSelected());
 
 				player->updateRichPresence();
+			}
+		}
+
+		// 4J Meow - T and / open chat. LCE never had typed chat, so there is no
+		// chat action to hang this off and no console equivalent to preserve;
+		// it is Windows-only and pends like the hotbar keys above, because this
+		// runs at 20Hz while the key edge happens per rendered frame.
+		{
+			bool bSlash = false;
+			if (Win64Input::ConsumeChatRequest(bSlash) && screen == NULL)
+			{
+				setScreen(new ChatScreen(bSlash ? wstring(L"/") : wstring(L"")));
 			}
 		}
 #endif // _WINDOWS64

@@ -5047,6 +5047,16 @@ xcopy /q /y /i /s /e $(ProjectDir)Durango\CU  $(LayoutDir)Image\Loose\CU</Comman
     </None>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Common\CPM\CPMAnim.h" />
+    <ClInclude Include="Common\CPM\CPMJson.h" />
+    <ClInclude Include="Common\CPM\CPMProject.h" />
+    <ClInclude Include="Common\CPM\CPMZip.h" />
+    <ClInclude Include="Common\CPM\CPMFiles.h" />
+    <ClInclude Include="Common\CPM\CPMManager.h" />
+    <ClInclude Include="Common\CPM\CPMNet.h" />
+    <ClInclude Include="Common\CPM\CPMIO.h" />
+    <ClInclude Include="Common\CPM\CPMModel.h" />
+    <ClInclude Include="Common\CPM\CPMRender.h" />
     <ClInclude Include="AbstractContainerScreen.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Durango'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage_Vita|Durango'">true</ExcludedFromBuild>
@@ -22234,6 +22244,16 @@ xcopy /q /y /i /s /e $(ProjectDir)Durango\CU  $(LayoutDir)Image\Loose\CU</Comman
     <ClInclude Include="ZombieRenderer.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Common\CPM\CPMAnim.cpp" />
+    <ClCompile Include="Common\CPM\CPMJson.cpp" />
+    <ClCompile Include="Common\CPM\CPMProject.cpp" />
+    <ClCompile Include="Common\CPM\CPMZip.cpp" />
+    <ClCompile Include="Common\CPM\CPMFiles.cpp" />
+    <ClCompile Include="Common\CPM\CPMManager.cpp" />
+    <ClCompile Include="Common\CPM\CPMNet.cpp" />
+    <ClCompile Include="Common\CPM\CPMIO.cpp" />
+    <ClCompile Include="Common\CPM\CPMModel.cpp" />
+    <ClCompile Include="Common\CPM\CPMRender.cpp" />
     <ClCompile Include="AbstractContainerScreen.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Durango'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ContentPackage_Vita|Durango'">true</ExcludedFromBuild>

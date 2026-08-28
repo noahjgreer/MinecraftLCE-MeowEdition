@@ -12,6 +12,7 @@
 #include "..\Minecraft.World\net.minecraft.world.effect.h"
 #include "..\Minecraft.World\LevelData.h"
 #include "..\Minecraft.World\net.minecraft.world.entity.item.h"
+#include "Common\CPM\CPMManager.h"
 
 
 
@@ -164,6 +165,10 @@ void MultiplayerLocalPlayer::reallyDrop(shared_ptr<ItemEntity> itemEntity)
 
 void MultiplayerLocalPlayer::chat(const wstring& message)
 {
+	// CPM commands are handled entirely client side and never reach the server
+	// as chat.
+	if (CPMManager::handleChatCommand(message, m_iPad)) return;
+
 	connection->send( shared_ptr<ChatPacket>( new ChatPacket(message) ) );
 }
 
