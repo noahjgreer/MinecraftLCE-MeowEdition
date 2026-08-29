@@ -40,14 +40,16 @@ vector<LevelSummary *> *AnvilLevelStorageSource::getLevelList()
 
 	for (unsigned int i = 0; i < worlds.size(); i++)
 	{
-		NativeSaveFile saveFile(AnvilSavePaths::worldDirectory(worlds[i]));
+		// The storage takes ownership and deletes this in ~DirectoryLevelStorage, so it
+		// has to be on the heap - a stack save file here corrupts the heap on scope exit.
+		NativeSaveFile *saveFile = new NativeSaveFile(AnvilSavePaths::worldDirectory(worlds[i]));
 
-		AnvilLevelStorage storage(&saveFile, baseDir, worlds[i], false);
+		AnvilLevelStorage storage(saveFile, baseDir, worlds[i], false);
 		LevelData *levelData = storage.prepareLevel();
 		if (levelData == NULL) continue;
 
 		levels->push_back(new LevelSummary(worlds[i], levelData->getLevelName(),
-		                                   levelData->getLastPlayed(), saveFile.getSizeOnDisk(),
+		                                   levelData->getLastPlayed(), saveFile->getSizeOnDisk(),
 		                                   levelData->getGameType(), false, levelData->isHardcore(),
 		                                   levelData->getAllowCommands()));
 		delete levelData;
@@ -60,9 +62,10 @@ LevelData *AnvilLevelStorageSource::loadLevelDataFor(const wstring &worldName)
 {
 	if (worldName.empty()) return NULL;
 
-	NativeSaveFile saveFile(AnvilSavePaths::worldDirectory(worldName));
+	// Heap-allocated because the storage owns and deletes it - see getLevelList().
+	NativeSaveFile *saveFile = new NativeSaveFile(AnvilSavePaths::worldDirectory(worldName));
 
-	AnvilLevelStorage storage(&saveFile, baseDir, worldName, false);
+	AnvilLevelStorage storage(saveFile, baseDir, worldName, false);
 	return storage.prepareLevel();
 }
 
@@ -74,7 +77,8 @@ LevelData *AnvilLevelStorageSource::getDataTagFor(ConsoleSaveFile *saveFile, con
 	NativeSaveFile *native = dynamic_cast<NativeSaveFile *>(saveFile);
 	if (native == NULL) return DirectoryLevelStorageSource::getDataTagFor(saveFile, levelId);
 
-	AnvilLevelStorage storage(saveFile, baseDir, levelId, false);
+	// saveFile belongs to the caller, so the storage must not delete it on scope exit.
+	AnvilLevelStorage storage(saveFile, baseDir, levelId, false, false);
 	return storage.prepareLevel();
 }
 

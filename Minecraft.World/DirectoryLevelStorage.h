@@ -100,13 +100,18 @@ private:
 
 protected:
 	ConsoleSaveFile *m_saveFile;
+	bool m_bOwnsSaveFile;
 
 public:
 	virtual ConsoleSaveFile *getSaveFile() { return m_saveFile; }
 	virtual void flushSaveFile(bool autosave);
 
 public:
-	DirectoryLevelStorage(ConsoleSaveFile *saveFile, const File dir, const wstring& levelId, bool createPlayerDir);
+	// 4J Meow - ownsSaveFile defaults to true, which is the rule every existing call site
+	// relies on: the storage deletes the save file it was handed. Pass false when the
+	// caller keeps ownership, as AnvilLevelStorageSource::getDataTagFor does - deleting a
+	// save file the caller still owns is a double free.
+	DirectoryLevelStorage(ConsoleSaveFile *saveFile, const File dir, const wstring& levelId, bool createPlayerDir, bool ownsSaveFile = true);
 	~DirectoryLevelStorage();
 
 private:

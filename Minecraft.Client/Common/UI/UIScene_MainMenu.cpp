@@ -7,6 +7,7 @@
 #include "UI.h"
 #include "UIScene_MainMenu.h"
 #ifdef _WINDOWS64
+#include "..\..\Windows64\Win64TextPrompt.h"
 #include "..\Network\Sockets\PlatformNetworkManagerSockets.h"
 #include "..\Network\GameNetworkManager.h"
 #include "..\..\Minecraft.h"
@@ -1497,82 +1498,28 @@ void UIScene_MainMenu::RunPlayGame(int iPad)
 }
 
 #ifdef _WINDOWS64
-// 4J Meow - "Join Server". Asks for an address and a display name, opens the
+// 4J Meow - "Join Server". Prompts for an address and a display name, opens the
 // TCP link, then hands over to the game's own network-game startup so the join
 // runs through exactly the same path a console session join does.
 //
-// The two questions used to be a native Win32 prompt window opened on top of
-// the game, because at the main menu there is no Screen being rendered to draw
-// into (GameRenderer only draws one for a local player, and there is no level
-// yet) and RequestKeyboard did nothing on this platform. RequestKeyboard now
-// works - it types into a menu field where there is one, and otherwise opens
-// the game's own keyboard scene - so the prompt window is gone and text entry
-// happens inside the game like everything else. See Common/UI/UITextEdit.h.
-//
-// It is a chain of two asynchronous requests rather than two blocking calls,
-// which is the shape every other keyboard caller in the game already has.
-//
 // The address and name are remembered for the session so re-joining is two
-// confirmations rather than two lots of typing. They are file statics, not
-// members, because the callbacks outlive the call and must not depend on this
-// scene still being the one on screen.
-static wchar_t s_szJoinAddress[256]	= L"127.0.0.1";
-static wchar_t s_szJoinName[64]		= L"";
-
-static void JoinServerConnect();
-
-static int JoinServerNameReturned(LPVOID lpParam, const bool bRes)
-{
-	if( !bRes ) return 0;
-
-	uint16_t pchText[64];
-	ZeroMemory(pchText, 64 * sizeof(uint16_t));
-	InputManager.GetText(pchText);
-
-	if( pchText[0] != 0 ) wcsncpy_s(s_szJoinName, 64, (wchar_t *)pchText, _TRUNCATE);
-
-	JoinServerConnect();
-	return 0;
-}
-
-static int JoinServerAddressReturned(LPVOID lpParam, const bool bRes)
-{
-	if( !bRes ) return 0;
-
-	uint16_t pchText[256];
-	ZeroMemory(pchText, 256 * sizeof(uint16_t));
-	InputManager.GetText(pchText);
-
-	if( pchText[0] != 0 ) wcsncpy_s(s_szJoinAddress, 256, (wchar_t *)pchText, _TRUNCATE);
-
-	InputManager.RequestKeyboard(L"Your name", s_szJoinName, (DWORD)ProfileManager.GetPrimaryPad(), 63,
-		&JoinServerNameReturned, NULL, C_4JInput::EKeyboardMode_Default);
-	return 0;
-}
-
+// confirmations rather than two lots of typing.
 void UIScene_MainMenu::RunJoinServer(int iPad)
 {
-	if( s_szJoinName[0] == 0 )
+	static wchar_t s_szAddress[256]	= L"127.0.0.1";
+	static wchar_t s_szName[64]		= L"";
+
+	if( s_szName[0] == 0 )
 	{
 		Minecraft *pMinecraft = Minecraft::GetInstance();
 		if( pMinecraft != NULL && pMinecraft->user != NULL )
 		{
-			wcsncpy_s(s_szJoinName, 64, pMinecraft->user->name.c_str(), _TRUNCATE);
+			wcsncpy_s(s_szName, 64, pMinecraft->user->name.c_str(), _TRUNCATE);
 		}
 	}
 
-	// EKeyboardMode_Default rather than _IP_Address: a server can be named as a
-	// hostname, and the optional ":port" is not part of an IP address either.
-	InputManager.RequestKeyboard(L"Server address (host or host:port)", s_szJoinAddress,
-		(DWORD)iPad, 255, &JoinServerAddressReturned, NULL, C_4JInput::EKeyboardMode_Default);
-}
-
-static void JoinServerConnect()
-{
-	wchar_t *s_szAddress	= s_szJoinAddress;
-	wchar_t *s_szName		= s_szJoinName;
-	// (aliases, so the connect sequence below is unchanged from when it was
-	// inline in RunJoinServer)
+	if( !Win64TextPrompt::Ask(L"Join Server", L"Server address (host or host:port):", s_szAddress, 256) ) return;
+	if( !Win64TextPrompt::Ask(L"Join Server", L"Your name:", s_szName, 64) ) return;
 
 	if( s_szAddress[0] == 0 || s_szName[0] == 0 ) return;
 

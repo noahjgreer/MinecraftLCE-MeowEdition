@@ -45,6 +45,9 @@ private:
 	map<__int64, AnvilRegionFile *> m_entityRegions;
 	AnvilRegionFile *getEntityRegion(int chunkX, int chunkZ, bool createIfMissing);
 
+	// Reads entities/r.x.z.mca and attaches what it finds to an already-loaded chunk.
+	void loadEntities(Level *level, LevelChunk *chunk, int x, int z);
+
 	AnvilRegionFile *openRegion(map<__int64, AnvilRegionFile *> &cache, const wchar_t *folder,
 	                            int chunkX, int chunkZ, bool createIfMissing);
 
@@ -68,6 +71,9 @@ public:
 	// Legacy block-entity id ("Chest") -> modern namespaced id ("minecraft:chest").
 	// Returns NULL when the type has no modern counterpart.
 	static const wchar_t *modernBlockEntityId(const wstring &legacyId);
+
+	// The reverse, for reading a world back in. NULL when unrecognised.
+	static const wchar_t *legacyBlockEntityId(const wstring &modernId);
 
 	// LCE biome id -> modern biome name. Always yields a valid name.
 	static const wchar_t *biomeName(int biomeId);

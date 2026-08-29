@@ -320,12 +320,38 @@ keeps their file across saves.
 `Inventory` and `EnderItems` go through the item mapping in both directions, and
 `Dimension` converts between LCE's int and Java's namespaced string.
 
+## Reading a world back
+
+The writer was complete well before the reader was, so for a while a reloaded world had
+correct terrain but no block metadata, no chest contents and no entities. Three things had
+to be added, and they are worth knowing about together:
+
+- **Block properties.** The reverse block table is keyed on the *full* state - name plus
+  properties - because everything LCE keeps in its 4 metadata bits (stair and torch
+  facing, slab half, log axis, door hinge) lives in the properties. A name-only table
+  flattens all of it. `AnvilBlockState::key()` sorts its properties so the key is
+  canonical, since on the way back in they arrive from an `unordered_map` in arbitrary
+  order. A name-only table remains as a fallback for Java-authored states LCE cannot
+  produce exactly: better to keep the block and lose the metadata than drop it.
+- **Block entities** come back through `legacyBlockEntityId()` and
+  `TileEntity::loadStatic`, with their contents run back through the item mapping.
+- **Entities** are read from `entities/r.x.z.mca` by `AnvilChunkStorage::loadEntities()`,
+  called from `load()` after the chunk is built.
+
+Both reverse id tables are derived from their forward counterparts so the two directions
+cannot drift, and both were diffed against them (20/20 block entities, 43/43 entities).
+
+The block state round trip is checked over the whole 4096-entry space: 2352 non-air
+states, 815 distinct, zero failures.
+
 ## What is still NOT done
 
-- **Item NBT extras.** Custom names, enchantments and lore are dropped - LCE's `tag`
-  compound has no faithful translation into the component system.
-- **Reading a Java-authored world** works at the block level via `fromChunkTag`, but
-  nothing reads Java's entities or block entities back into the game.
+- **Item NBT extras.** Custom names, enchantments and lore are dropped on save - LCE's
+  `tag` compound has no faithful translation into the component system - so they cannot
+  come back either.
+- **A world authored by real Java** loads at the block level, but its entity and block
+  entity payloads are not something these loaders understand; only ids and item lists are
+  translated, and the rest is assumed to be what LCE itself wrote.
 - **Block/fluid ticks and structures** are written as empty.
 - **Villager trades, mob equipment beyond the standard lists, and map item data** are
   untranslated.

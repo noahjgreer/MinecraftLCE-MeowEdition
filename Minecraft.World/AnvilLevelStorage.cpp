@@ -23,8 +23,8 @@
 
 #define ANVIL_VERSION_NAME L"26.1.2"
 
-AnvilLevelStorage::AnvilLevelStorage(ConsoleSaveFile *saveFile, File dir, const wstring &levelName, bool createPlayerDir)
-	: DirectoryLevelStorage(saveFile, dir, levelName, createPlayerDir)
+AnvilLevelStorage::AnvilLevelStorage(ConsoleSaveFile *saveFile, File dir, const wstring &levelName, bool createPlayerDir, bool ownsSaveFile)
+	: DirectoryLevelStorage(saveFile, dir, levelName, createPlayerDir, ownsSaveFile)
 {
 	NativeSaveFile *native = dynamic_cast<NativeSaveFile *>(saveFile);
 	m_worldRoot = native != NULL ? native->getRoot() : L".";

@@ -4,6 +4,9 @@
 #include "..\..\MultiplayerLocalPlayer.h"
 #include "..\..\..\Minecraft.World\net.minecraft.world.inventory.h"
 #include "UIScene_CraftingMenu.h"
+#ifdef _UI_MOUSE_POINTER
+#include "..\..\Windows64\Win64KeyboardMouse.h"
+#endif
 
 #ifdef __PSVITA__
 #define GAME_CRAFTING_TOUCHUPDATE_TIMER_ID 0
@@ -251,12 +254,14 @@ wstring UIScene_CraftingMenu::getMoviePath()
 	}
 }
 
-#ifdef __PSVITA__
+#ifdef _UI_POINTER_SUPPORT
 UIControl* UIScene_CraftingMenu::GetMainPanel()
 {
 	return &m_controlMainPanel;
 }
+#endif
 
+#ifdef __PSVITA__
 void UIScene_CraftingMenu::handleTouchInput(unsigned int iPad, S32 x, S32 y, int iId, bool bPressed, bool bRepeat, bool bReleased)
 {
 	// perform action on release
@@ -311,54 +316,13 @@ void UIScene_CraftingMenu::handleTouchInput(unsigned int iPad, S32 x, S32 y, int
 	{
 		if(iId >= ETouchInput_TouchPanel_0 && iId <= ETouchInput_TouchPanel_6)		// Touch Change Group
 		{
-			m_iGroupIndex = iId;
-			// turn on the new group
-			showTabHighlight(m_iGroupIndex,true);
-
-			m_iCurrentSlotHIndex=0;
-			m_iCurrentSlotVIndex=1;
-			CheckRecipesAvailable();
-			// reset the vertical slots
-			iVSlotIndexA[0]=CanBeMadeA[m_iCurrentSlotHIndex].iCount-1;
-			iVSlotIndexA[1]=0;
-			iVSlotIndexA[2]=1;
-			ui.PlayUISFX(eSFX_Focus);
-			UpdateVerticalSlots();
-			UpdateHighlight();
-			setGroupText(GetGroupNameText(m_pGroupA[m_iGroupIndex]));
+			SelectGroup(iId);
 		}
 		else if(iId == ETouchInput_CraftingHSlots)									// Touch Change Slot
 		{
-			int iMaxHSlots = 0;
-			if(m_iContainerType==RECIPE_TYPE_3x3)
-			{
-				iMaxHSlots = m_iMaxHSlot3x3C;
-			}
-			else
-			{
-				iMaxHSlots = m_iMaxHSlot2x2C;
-			}
-
 			int iNewSlot = (x - m_TouchInput[ETouchInput_CraftingHSlots].getXPos() - m_controlMainPanel.getXPos()) / m_TouchInput[ETouchInput_CraftingHSlots].getHeight();
 
-			int iOldHSlot=m_iCurrentSlotHIndex;
-
-			m_iCurrentSlotHIndex = iNewSlot;
-			if(m_iCurrentSlotHIndex>=m_iCraftablesMaxHSlotC) m_iCurrentSlotHIndex=0;
-			m_iCurrentSlotVIndex=1;
-			// clear the indices
-			iVSlotIndexA[0]=CanBeMadeA[m_iCurrentSlotHIndex].iCount-1;
-			iVSlotIndexA[1]=0;
-			iVSlotIndexA[2]=1;	
-
-			UpdateVerticalSlots();
-			UpdateHighlight();
-			// re-enable the old hslot
-			if(CanBeMadeA[iOldHSlot].iCount>0)
-			{
-				setShowCraftHSlot(iOldHSlot,true);
-			}
-			ui.PlayUISFX(eSFX_Focus);
+			SelectHSlot(iNewSlot);
 		}
 	}
 }
@@ -379,6 +343,176 @@ void UIScene_CraftingMenu::handleTimerComplete(int id)
 	}
 }
 #endif
+
+#ifdef _UI_POINTER_SUPPORT
+// 4J Meow - lifted verbatim out of the Vita touch handler so the mouse can reach
+// it too. Nothing here is new behaviour; it is what a tab press has always done.
+void UIScene_CraftingMenu::SelectGroup(int iGroup)
+{
+	m_iGroupIndex = iGroup;
+	// turn on the new group
+	showTabHighlight(m_iGroupIndex,true);
+
+	m_iCurrentSlotHIndex=0;
+	m_iCurrentSlotVIndex=1;
+	CheckRecipesAvailable();
+	// reset the vertical slots
+	iVSlotIndexA[0]=CanBeMadeA[m_iCurrentSlotHIndex].iCount-1;
+	iVSlotIndexA[1]=0;
+	iVSlotIndexA[2]=1;
+	ui.PlayUISFX(eSFX_Focus);
+	UpdateVerticalSlots();
+	UpdateHighlight();
+	setGroupText(GetGroupNameText(m_pGroupA[m_iGroupIndex]));
+}
+
+void UIScene_CraftingMenu::SelectHSlot(int iSlot)
+{
+	int iOldHSlot=m_iCurrentSlotHIndex;
+
+	m_iCurrentSlotHIndex = iSlot;
+	if(m_iCurrentSlotHIndex>=m_iCraftablesMaxHSlotC) m_iCurrentSlotHIndex=0;
+	m_iCurrentSlotVIndex=1;
+	// clear the indices
+	iVSlotIndexA[0]=CanBeMadeA[m_iCurrentSlotHIndex].iCount-1;
+	iVSlotIndexA[1]=0;
+	iVSlotIndexA[2]=1;	
+
+	UpdateVerticalSlots();
+	UpdateHighlight();
+	// re-enable the old hslot
+	if(CanBeMadeA[iOldHSlot].iCount>0)
+	{
+		setShowCraftHSlot(iOldHSlot,true);
+	}
+	ui.PlayUISFX(eSFX_Focus);
+}
+#endif // _UI_POINTER_SUPPORT
+
+#ifdef _UI_MOUSE_POINTER
+// ---------------------------------------------------------------------------
+// 4J Meow - clicking the crafting menu.
+//
+// This scene is not a container menu: it has no free pointer of its own, and
+// none of its controls are the button-ish types UIController::TickMousePointer
+// knows how to focus. So the mouse could do exactly one thing here - a left
+// click arrived as ACTION_MENU_A, which is "craft the selected recipe" - and
+// every attempt to click a tab crafted a plank instead.
+//
+// The Vita already had the answer: its touch handler picks a tab or a craftable
+// from a screen position. That code is now SelectGroup/SelectHSlot and this
+// does the hit-testing half of what the touchbox builder did for it.
+//
+// Crafting is left to ACTION_MENU_A from the keyboard or the pad - space, enter
+// or A - which is what the owner asked for and what the button prompt says.
+// ---------------------------------------------------------------------------
+
+// Which tab is at (x,y)? Coordinates are in main-panel space. -1 for none.
+int UIScene_CraftingMenu::TabIndexAt(S32 x, S32 y)
+{
+	// Bounds are only correct for the frame they were read on.
+	m_controlCraftingTabs.UpdateControl();
+
+	const int iTabC = (m_iContainerType==RECIPE_TYPE_3x3) ? m_iMaxGroup3x3 : m_iMaxGroup2x2;
+
+	S32 iPitch  = m_controlCraftingTabs.getWidth();
+	S32 iHeight = m_controlCraftingTabs.getHeight();
+	if(iPitch <= 0 || iHeight <= 0) return -1;
+
+	// CraftingTabs is one keyframe per tab - the clip holds a single tab-sized
+	// child that the movie slides along as SetActiveTab changes frame - so the
+	// width it reports is one tab, and the strip is that repeated iTabC times
+	// from the clip's own origin, which does not move with the frame.
+	//
+	// Guarded rather than assumed: if some movie reports the whole strip
+	// instead, that is a width of about the panel, and dividing it gets to the
+	// same place.
+	S32 iStrip = iPitch * iTabC;
+	const S32 iPanelWidth = m_controlMainPanel.getWidth();
+	if(iPanelWidth > 0 && iStrip > (iPanelWidth * 3) / 2)
+	{
+		iStrip = iPitch;
+		iPitch = iStrip / iTabC;
+		if(iPitch <= 0) return -1;
+	}
+
+	const S32 x0 = m_controlCraftingTabs.getXPos();
+	const S32 y0 = m_controlCraftingTabs.getYPos();
+
+	if(x < x0 || x >= x0 + iStrip)  return -1;
+	if(y < y0 || y >= y0 + iHeight) return -1;
+
+	int iTab = (x - x0) / iPitch;
+	if(iTab < 0)       iTab = 0;
+	if(iTab >= iTabC)  iTab = iTabC - 1;
+	return iTab;
+}
+
+// Which craftable in the horizontal strip is at (x,y)? Main-panel space, -1 for
+// none. The slots are square, so the pitch is the strip's height - the same
+// thing the Vita touch handler divides by.
+int UIScene_CraftingMenu::HSlotIndexAt(S32 x, S32 y)
+{
+	m_slotListCraftingHSlots.UpdateControl();
+
+	const S32 x0 = m_slotListCraftingHSlots.getXPos();
+	const S32 y0 = m_slotListCraftingHSlots.getYPos();
+	const S32 w  = m_slotListCraftingHSlots.getWidth();
+	const S32 h  = m_slotListCraftingHSlots.getHeight();
+	if(w <= 0 || h <= 0) return -1;
+
+	if(x < x0 || x >= x0 + w) return -1;
+	if(y < y0 || y >= y0 + h) return -1;
+
+	const int iSlot = (x - x0) / h;
+	if(iSlot < 0 || iSlot >= m_iCraftablesMaxHSlotC) return -1;
+
+	// An empty slot is not a craftable; leave the selection where it is rather
+	// than jumping it onto a blank.
+	if(CanBeMadeA[iSlot].iCount == 0) return -1;
+
+	return iSlot;
+}
+
+bool UIScene_CraftingMenu::HandleMouseClick()
+{
+	if(!Win64Input::IsPointerActive()) return false;
+
+	float fPointerX = 0.0f, fPointerY = 0.0f;
+	if(!Win64Input::GetPointerPos(fPointerX, fPointerY)) return false;
+
+	int iClientW = 0, iClientH = 0;
+	if(!Win64Input::GetClientSize(iClientW, iClientH)) return false;
+	if(iClientW <= 0 || iClientH <= 0) return false;
+
+	const int iMovieW = getMovieWidth();
+	const int iMovieH = getMovieHeight();
+	if(iMovieW <= 0 || iMovieH <= 0) return false;
+
+	// Client pixels -> the scene's authored space -> main-panel space, which is
+	// what every control in this scene is positioned in.
+	m_controlMainPanel.UpdateControl();
+
+	const S32 x = (S32)(fPointerX * (float)iMovieW / (float)iClientW) - m_controlMainPanel.getXPos();
+	const S32 y = (S32)(fPointerY * (float)iMovieH / (float)iClientH) - m_controlMainPanel.getYPos();
+
+	const int iTab = TabIndexAt(x, y);
+	if(iTab >= 0)
+	{
+		if(iTab != m_iGroupIndex) SelectGroup(iTab);
+		return true;
+	}
+
+	const int iSlot = HSlotIndexAt(x, y);
+	if(iSlot >= 0)
+	{
+		if(iSlot != m_iCurrentSlotHIndex) SelectHSlot(iSlot);
+		return true;
+	}
+
+	return false;
+}
+#endif // _UI_MOUSE_POINTER
 
 void UIScene_CraftingMenu::handleReload()
 {
@@ -547,6 +681,23 @@ bool UIScene_CraftingMenu::allowRepeat(int key)
 void UIScene_CraftingMenu::handleInput(int iPad, int key, bool repeat, bool pressed, bool released, bool &handled)
 {
 	//app.DebugPrintf("UIScene_InventoryMenu handling input for pad %d, key %d, down- %s, pressed- %s, released- %s\n", iPad, key, down?"TRUE":"FALSE", pressed?"TRUE":"FALSE", released?"TRUE":"FALSE");
+#ifdef _UI_MOUSE_POINTER
+	// 4J Meow - a left click reaches here as ACTION_MENU_A (see
+	// MouseKeyForMenuAction), and ACTION_MENU_A on this scene means craft. That
+	// is wrong for a pointing device: a click is "pick the thing I am pointing
+	// at". Crafting stays on the keyboard and the pad, where the button prompt
+	// points - space, enter or A.
+	//
+	// Checked against the mouse button rather than the action so that space and
+	// enter are untouched; they raise the same action but not this.
+	if(pressed && !repeat && (key == ACTION_MENU_A) && Win64Input::IsMouseButtonDown(0))
+	{
+		HandleMouseClick();
+		handled = true;
+		return;
+	}
+#endif
+
 	ui.AnimateKeyPress(m_iPad, key, repeat, pressed, released);
 
 	switch(key)

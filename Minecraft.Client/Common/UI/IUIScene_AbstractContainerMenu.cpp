@@ -713,10 +713,23 @@ void IUIScene_AbstractContainerMenu::onMouseTick()
 	}
 
 	// Clamp to pointer extents.
-	if ( vPointerPos.x < m_fPointerMinX )				vPointerPos.x = m_fPointerMinX;
-	else if ( vPointerPos.x > m_fPointerMaxX )		vPointerPos.x = m_fPointerMaxX;
-	if ( vPointerPos.y < m_fPointerMinY )				vPointerPos.y = m_fPointerMinY;
-	else if ( vPointerPos.y > m_fPointerMaxY )		vPointerPos.y = m_fPointerMaxY;
+	//
+	// 4J Meow - not for the mouse. These extents are the background panel grown
+	// by a pointer's width, which is as far as the stick ever needed to reach:
+	// far enough off the panel to drop an item, no further. Sections drawn
+	// outside the panel - the creative menu's tab strip sits above it - are
+	// beyond that box, so clamping would peg the drawn pointer at the panel edge
+	// while the hit-test above, which ran on the unclamped position, reports a
+	// tab. The mouse is already confined to the window, so it needs no box.
+#ifdef _UI_MOUSE_POINTER
+	if ( !m_bPointerFromMouse )
+#endif
+	{
+		if ( vPointerPos.x < m_fPointerMinX )			vPointerPos.x = m_fPointerMinX;
+		else if ( vPointerPos.x > m_fPointerMaxX )		vPointerPos.x = m_fPointerMaxX;
+		if ( vPointerPos.y < m_fPointerMinY )			vPointerPos.y = m_fPointerMinY;
+		else if ( vPointerPos.y > m_fPointerMaxY )		vPointerPos.y = m_fPointerMaxY;
+	}
 
 	// Check if the pointer is outside of the panel.
 	bool bPointerIsOutsidePanel = false;
@@ -1476,7 +1489,15 @@ bool IUIScene_AbstractContainerMenu::handleKeyDown(int iPad, int iAction, bool b
 
 				// 4J WESTY : For pointer system we can legally drop items outside of the window panel here, or may press button while
 				// pointer is over empty panel space.
-				if ( m_bPointerOutsideMenu )
+				//
+				// 4J Meow - ...but only when the pointer is over nothing. A
+				// section can legitimately lie outside the background panel -
+				// the creative menu's tab strip does - and a click on one of
+				// those was being swallowed as a drop-outside, which is why
+				// creative was stuck on the first tab under the mouse. What
+				// makes a click a drop is that there is no section under the
+				// pointer, not which side of the panel edge it fell on.
+				if ( m_bPointerOutsideMenu && ( m_eCurrSection == eSectionNone ) )
 				{
 					handleOutsideClicked(iPad, buttonNum, quickKeyHeld);
 				}

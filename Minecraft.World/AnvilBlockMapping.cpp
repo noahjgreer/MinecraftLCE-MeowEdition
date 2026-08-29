@@ -699,16 +699,25 @@ void AnvilBlockMapping::toBlockState(int tileId, int metaData, AnvilBlockState &
 	}
 }
 
-// The reverse table is derived from the forward one rather than written out a second
-// time, so the two can never drift apart. The first (id, meta) that produces a given
-// block name wins, which keeps the canonical low-metadata variant.
-static map<wstring, int> *s_reverse = NULL;
+// The reverse tables are derived from the forward mapping rather than written out a
+// second time, so the two directions cannot drift apart.
+//
+// Two of them, because a block state has to be matched on its *whole* identity. Keying
+// only on the name loses everything that lives in the properties - every oak_stairs would
+// come back facing east, every wall torch pointing north - which is exactly what happened
+// before this existed. The name-only table stays as a fallback for states Java wrote that
+// LCE cannot produce exactly.
+//
+// First (id, meta) wins in both, which keeps the canonical low-metadata variant.
+static map<wstring, int> *s_reverseByState = NULL;
+static map<wstring, int> *s_reverseByName = NULL;
 
 static void buildReverseTable()
 {
-	if (s_reverse != NULL) return;
+	if (s_reverseByState != NULL) return;
 
-	s_reverse = new map<wstring, int>();
+	s_reverseByState = new map<wstring, int>();
+	s_reverseByName = new map<wstring, int>();
 
 	AnvilBlockState state;
 	for (int id = 0; id < 256; id++)
@@ -720,21 +729,76 @@ static void buildReverseTable()
 			// Air is the fallback for every unregistered id; do not let it claim a slot.
 			if (id != 0 && wcscmp(state.name, L"minecraft:air") == 0) continue;
 
-			const wstring name = state.name;
-			if (s_reverse->find(name) == s_reverse->end())
+			const int packed = (id << 4) | meta;
+
+			const wstring full = state.key();
+			if (s_reverseByState->find(full) == s_reverseByState->end())
 			{
-				(*s_reverse)[name] = (id << 4) | meta;
+				(*s_reverseByState)[full] = packed;
+			}
+
+			const wstring name = state.name;
+			if (s_reverseByName->find(name) == s_reverseByName->end())
+			{
+				(*s_reverseByName)[name] = packed;
 			}
 		}
 	}
+}
+
+wstring AnvilBlockMapping::stateKey(const wstring &name, const vector<AnvilBlockProperty> &properties)
+{
+	// Same canonical form as AnvilBlockState::key(): properties sorted by name.
+	vector<AnvilBlockProperty> sorted = properties;
+
+	for (unsigned int i = 1; i < sorted.size(); i++)
+	{
+		const AnvilBlockProperty held = sorted[i];
+		int j = (int)i - 1;
+
+		while (j >= 0 && sorted[j].key > held.key)
+		{
+			sorted[j + 1] = sorted[j];
+			j--;
+		}
+		sorted[j + 1] = held;
+	}
+
+	wstring key = name;
+	for (unsigned int i = 0; i < sorted.size(); i++)
+	{
+		key += L'\x1f';
+		key += sorted[i].key;
+		key += L'=';
+		key += sorted[i].value;
+	}
+	return key;
+}
+
+bool AnvilBlockMapping::fromBlockState(const wstring &name, const vector<AnvilBlockProperty> &properties,
+                                       int &tileId, int &metaData)
+{
+	buildReverseTable();
+
+	AUTO_VAR(exact, s_reverseByState->find(stateKey(name, properties)));
+	if (exact != s_reverseByState->end())
+	{
+		tileId = (exact->second >> 4) & 0xff;
+		metaData = exact->second & 15;
+		return true;
+	}
+
+	// The exact combination is not one LCE produces - a Java-authored state with extra or
+	// different properties. Keep the block and lose only the properties.
+	return fromBlockState(name, tileId, metaData);
 }
 
 bool AnvilBlockMapping::fromBlockState(const wstring &name, int &tileId, int &metaData)
 {
 	buildReverseTable();
 
-	AUTO_VAR(it, s_reverse->find(name));
-	if (it == s_reverse->end()) return false;
+	AUTO_VAR(it, s_reverseByName->find(name));
+	if (it == s_reverseByName->end()) return false;
 
 	tileId = (it->second >> 4) & 0xff;
 	metaData = it->second & 15;

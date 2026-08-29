@@ -137,4 +137,73 @@ bool AnvilEntityMapping::convertEntity(CompoundTag *entityTag)
 	return true;
 }
 
+// Derived from toEntityId() so the two directions cannot drift. Minecarts collapse onto
+// the single legacy "Minecart" id; convertEntityFromJava restores the Type field.
+const wchar_t *AnvilEntityMapping::toLegacyEntityId(const wstring &modernId)
+{
+	static const wchar_t *legacy[] =
+	{
+		L"Item", L"XPOrb", L"Painting", L"Arrow", L"Snowball", L"Fireball", L"SmallFireball",
+		L"ThrownEnderpearl", L"EyeOfEnderSignal", L"ThrownPotion", L"ThrownExpBottle",
+		L"ItemFrame", L"PrimedTnt", L"FallingSand", L"Boat", L"Creeper", L"Skeleton",
+		L"Spider", L"Giant", L"Zombie", L"Slime", L"Ghast", L"PigZombie", L"Enderman",
+		L"CaveSpider", L"Silverfish", L"Blaze", L"LavaSlime", L"EnderDragon", L"Pig",
+		L"Sheep", L"Cow", L"Chicken", L"Squid", L"Wolf", L"MushroomCow", L"SnowMan",
+		L"Ozelot", L"VillagerGolem", L"Villager", L"EnderCrystal", L"DragonFireball"
+	};
+
+	for (int i = 0; i < (int)(sizeof(legacy) / sizeof(legacy[0])); i++)
+	{
+		const wchar_t *modern = toEntityId(legacy[i], NULL);
+		if (modern != NULL && modernId == modern) return legacy[i];
+	}
+
+	if (modernId == L"minecraft:minecart" ||
+	    modernId == L"minecraft:chest_minecart" ||
+	    modernId == L"minecraft:furnace_minecart") return L"Minecart";
+
+	return NULL;
+}
+
+bool AnvilEntityMapping::convertEntityFromJava(CompoundTag *entityTag)
+{
+	if (entityTag == NULL || !entityTag->contains(L"id")) return false;
+
+	const wstring modernId = entityTag->getString(L"id");
+
+	const wchar_t *legacyId = toLegacyEntityId(modernId);
+	if (legacyId == NULL) return false;
+
+	// The minecart variant went into the id on the way out; put it back in Type.
+	if (wcscmp(legacyId, L"Minecart") == 0)
+	{
+		int type = 0;
+		if (modernId == L"minecraft:chest_minecart") type = 1;
+		else if (modernId == L"minecraft:furnace_minecart") type = 2;
+
+		entityTag->putInt(L"Type", type);
+	}
+
+	entityTag->putString(L"id", legacyId);
+
+	AnvilItemMapping::convertItemListFromJava(entityTag, L"Items");
+	AnvilItemMapping::convertItemListFromJava(entityTag, L"Inventory");
+
+	if (entityTag->contains(L"Item"))
+	{
+		CompoundTag *item = entityTag->getCompound(L"Item");
+		if (!AnvilItemMapping::fromItemStack(item)) return false;
+	}
+
+	// The UUID was synthesised on the way out and means nothing to LCE.
+	if (entityTag->contains(L"UUID"))
+	{
+		Tag *uuid = entityTag->get(L"UUID");
+		entityTag->remove(L"UUID");
+		delete uuid;
+	}
+
+	return true;
+}
+
 #endif // _WINDOWS64

@@ -178,6 +178,19 @@ void UIScene_AbstractContainerMenu::tick()
 
 #ifdef _UI_MOUSE_POINTER
 	UpdatePointerFromMouse();
+
+	// 4J Meow - the section hit-test in IUIScene_AbstractContainerMenu::onMouseTick
+	// reads its rectangles straight out of these UIControls, and a control's
+	// cached bounds are only correct for the frame they were taken on -
+	// ActionScript positions and resizes things after setupControl ran. The slot
+	// lists happen to be authored where they end up; the creative menu's tab
+	// panels are not, so their rectangles were never where the pointer was and
+	// no tab could be hovered, let alone clicked.
+	//
+	// UIController::TickMousePointer refreshes controls the same way for every
+	// other scene. A container menu has a couple of dozen controls, and this only
+	// runs on the mouse path, so the cost is the same as that one's.
+	if(m_bPointerFromMouse) UpdateSceneControls();
 #endif
 
 	onMouseTick();

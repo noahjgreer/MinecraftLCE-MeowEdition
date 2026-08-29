@@ -37,19 +37,46 @@ struct AnvilBlockState
 		propCount++;
 	}
 
-	// Stable identity used to deduplicate palette entries within a section.
+	// Stable identity used to deduplicate palette entries within a section, and as the
+	// lookup key for the reverse mapping.
+	//
+	// The properties are sorted so the key is canonical: coming back in they arrive from
+	// an unordered_map inside CompoundTag, in whatever order that happens to give.
 	wstring key() const
 	{
+		int order[ANVIL_MAX_BLOCK_PROPERTIES];
+		for (int i = 0; i < propCount; i++) order[i] = i;
+
+		for (int i = 1; i < propCount; i++)
+		{
+			const int held = order[i];
+			int j = i - 1;
+
+			while (j >= 0 && wcscmp(propKeys[order[j]], propKeys[held]) > 0)
+			{
+				order[j + 1] = order[j];
+				j--;
+			}
+			order[j + 1] = held;
+		}
+
 		wstring k = name;
 		for (int i = 0; i < propCount; i++)
 		{
 			k += L'\x1f';
-			k += propKeys[i];
+			k += propKeys[order[i]];
 			k += L'=';
-			k += propVals[i];
+			k += propVals[order[i]];
 		}
 		return k;
 	}
+};
+
+// One property of a block state, as read back out of saved NBT.
+struct AnvilBlockProperty
+{
+	wstring key;
+	wstring value;
 };
 
 class AnvilBlockMapping
@@ -60,5 +87,18 @@ public:
 
 	// Modern block state -> LCE (id, meta). Returns false when the state has no LCE
 	// equivalent, in which case tileId/metaData are left untouched.
+	//
+	// The name-only form cannot recover metadata that lives in the properties - every
+	// oak_stairs resolves to the same facing - so it is only a fallback. Prefer the
+	// overload below wherever the properties are available.
 	static bool fromBlockState(const wstring &name, int &tileId, int &metaData);
+
+	// As above, but matches the full state. Falls back to the name alone when the exact
+	// combination is not one LCE can produce, so a Java-authored state with unfamiliar
+	// properties still resolves to the right block.
+	static bool fromBlockState(const wstring &name, const vector<AnvilBlockProperty> &properties,
+	                           int &tileId, int &metaData);
+
+	// Canonical key for a name plus properties, matching AnvilBlockState::key().
+	static wstring stateKey(const wstring &name, const vector<AnvilBlockProperty> &properties);
 };

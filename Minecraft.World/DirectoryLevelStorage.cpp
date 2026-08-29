@@ -159,10 +159,11 @@ void DirectoryLevelStorage::PlayerMappings::readMappings(DataInputStream *dis)
 }
 #endif
 
-DirectoryLevelStorage::DirectoryLevelStorage(ConsoleSaveFile *saveFile, const File dir, const wstring& levelId, bool createPlayerDir) : sessionId( System::currentTimeMillis() ),
+DirectoryLevelStorage::DirectoryLevelStorage(ConsoleSaveFile *saveFile, const File dir, const wstring& levelId, bool createPlayerDir, bool ownsSaveFile) : sessionId( System::currentTimeMillis() ),
 	dir( L"" ), playerDir( sc_szPlayerDir ), dataDir( wstring(L"data/") ), levelId(levelId)
 {
 	m_saveFile = saveFile;
+	m_bOwnsSaveFile = ownsSaveFile;
 	m_bHasLoadedMapDataMappings = false;
 
 #ifdef _LARGE_WORLDS
@@ -172,7 +173,10 @@ DirectoryLevelStorage::DirectoryLevelStorage(ConsoleSaveFile *saveFile, const Fi
 
 DirectoryLevelStorage::~DirectoryLevelStorage()
 {
-	delete m_saveFile;
+	if(m_bOwnsSaveFile)
+	{
+		delete m_saveFile;
+	}
 
 	for(AUTO_VAR(it,m_cachedSaveData.begin()); it != m_cachedSaveData.end(); ++it)
 	{

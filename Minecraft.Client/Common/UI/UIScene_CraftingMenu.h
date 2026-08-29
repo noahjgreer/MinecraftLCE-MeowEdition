@@ -66,13 +66,19 @@ public:
 
 #ifdef __PSVITA__
 	virtual void handleTouchInput(unsigned int iPad, S32 x, S32 y, int iId, bool bPressed, bool bRepeat, bool bReleased);
-	virtual UIControl* GetMainPanel();
 	virtual void handleTouchBoxRebuild();
 	virtual void handleTimerComplete(int id);
 #endif
 
+#ifdef _UI_POINTER_SUPPORT
+	// Every control in this scene is positioned relative to the main panel, so
+	// any pointer hit-test needs the panel's own position as an offset.
+	virtual UIControl* GetMainPanel();
+#endif
+
 protected:
 	UIControl m_controlMainPanel;
+	UIControl m_controlCraftingTabs;
 	UIControl m_control1Selector, m_control2Selector, m_control3Selector;
 	UIControl_SlotList m_slotListCraftingHSlots;
 	UIControl_SlotList m_slotListCrafting1VSlots, m_slotListCrafting2VSlots[2], m_slotListCrafting3VSlots[3];
@@ -107,6 +113,11 @@ protected:
 	UI_BEGIN_MAP_ELEMENTS_AND_NAMES(UIScene)
 		UI_MAP_ELEMENT( m_controlMainPanel, "MainPanel" )
 		UI_BEGIN_MAP_CHILD_ELEMENTS( m_controlMainPanel )
+			// 4J Meow - the tab strip. Mapped for its bounds only; the movie owns
+			// what it draws (SetActiveTab). Present in every crafting movie,
+			// Vita's included.
+			UI_MAP_ELEMENT( m_controlCraftingTabs, "CraftingTabs")
+
 			UI_MAP_ELEMENT( m_slotListCraftingHSlots, "CraftingHSlots")
 
 			UI_MAP_ELEMENT( m_control3Selector, "SlotSelector3" )
@@ -176,6 +187,20 @@ protected:
 
 	virtual bool allowRepeat(int key);
 	void handleInput(int iPad, int key, bool repeat, bool pressed, bool released, bool &handled);
+
+#ifdef _UI_POINTER_SUPPORT
+	// Shared by the Vita touchscreen and the Windows mouse: pick a category tab,
+	// or a craftable in the horizontal strip.
+	void SelectGroup(int iGroup);
+	void SelectHSlot(int iSlot);
+#endif
+
+#ifdef _UI_MOUSE_POINTER
+	// Returns true if the click landed on something. See the definition.
+	bool HandleMouseClick();
+	int TabIndexAt(S32 x, S32 y);
+	int HSlotIndexAt(S32 x, S32 y);
+#endif
 
 protected:
 	virtual int getPad();

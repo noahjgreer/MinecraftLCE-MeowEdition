@@ -28,6 +28,11 @@ public:
 	// Rewrites a saved entity compound in place. Returns false when the entity cannot be
 	// represented and should be dropped.
 	static bool convertEntity(CompoundTag *entityTag);
+
+	// The reverse pair, for reading a world back in: EntityIO::loadStatic matches on the
+	// legacy save id, so a namespaced one loads nothing at all.
+	static const wchar_t *toLegacyEntityId(const wstring &modernId);
+	static bool convertEntityFromJava(CompoundTag *entityTag);
 };
 
 #endif // _WINDOWS64

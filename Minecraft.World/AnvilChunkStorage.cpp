@@ -5,6 +5,7 @@
 #include "AnvilSavePaths.h"
 #include "AnvilItemMapping.h"
 #include "AnvilEntityMapping.h"
+#include "EntityIO.h"
 
 #include "CompoundTag.h"
 #include "ListTag.h"
@@ -79,6 +80,27 @@ const wchar_t *AnvilChunkStorage::modernBlockEntityId(const wstring &legacyId)
 	if (legacyId == L"RecordPlayer") return L"minecraft:jukebox";
 	if (legacyId == L"EnderChest")   return L"minecraft:ender_chest";
 	if (legacyId == L"FlowerPot")    return L"minecraft:flower_pot";
+	return NULL;
+}
+
+// Derived from modernBlockEntityId() rather than written out again, so the two cannot
+// disagree about what a Chest is called.
+const wchar_t *AnvilChunkStorage::legacyBlockEntityId(const wstring &modernId)
+{
+	static const wchar_t *legacy[] =
+	{
+		L"Chest", L"Furnace", L"Sign", L"MobSpawner", L"Music", L"Trap", L"Dropper",
+		L"Piston", L"Cauldron", L"EnchantTable", L"Airportal", L"Control", L"Beacon",
+		L"Skull", L"DLDetector", L"Hopper", L"Comparator", L"RecordPlayer", L"EnderChest",
+		L"FlowerPot"
+	};
+
+	for (int i = 0; i < (int)(sizeof(legacy) / sizeof(legacy[0])); i++)
+	{
+		const wchar_t *modern = modernBlockEntityId(legacy[i]);
+		if (modern != NULL && modernId == modern) return legacy[i];
+	}
+
 	return NULL;
 }
 
@@ -413,8 +435,34 @@ LevelChunk *AnvilChunkStorage::fromChunkTag(Level *level, CompoundTag *tag)
 				CompoundTag *entry = palette->get(p);
 				const wstring name = entry != NULL ? entry->getString(L"Name") : wstring(L"minecraft:air");
 
+				// The properties carry everything LCE keeps in its metadata - stair and
+				// torch facing, slab half, log axis, door hinge. Matching on the name
+				// alone silently flattened all of it.
+				vector<AnvilBlockProperty> properties;
+
+				if (entry != NULL && entry->contains(L"Properties"))
+				{
+					CompoundTag *props = entry->getCompound(L"Properties");
+					vector<Tag *> *all = props->getAllTags();
+
+					if (all != NULL)
+					{
+						for (unsigned int t = 0; t < all->size(); t++)
+						{
+							Tag *tag = (*all)[t];
+							if (tag == NULL || tag->getId() != Tag::TAG_String) continue;
+
+							AnvilBlockProperty property;
+							property.key = tag->getName();
+							property.value = ((StringTag *)tag)->data;
+							properties.push_back(property);
+						}
+						delete all;
+					}
+				}
+
 				int id = 0, meta = 0;
-				if (!AnvilBlockMapping::fromBlockState(name, id, meta))
+				if (!AnvilBlockMapping::fromBlockState(name, properties, id, meta))
 				{
 					// No LCE equivalent - leave the space empty rather than guessing.
 					id = 0;
@@ -515,6 +563,29 @@ LevelChunk *AnvilChunkStorage::fromChunkTag(Level *level, CompoundTag *tag)
 	// Biomes are deliberately left at their unset marker so the biome source recomputes
 	// them, exactly as OldChunkStorage does when a chunk has no Biomes array.
 
+	// Block entities. Without these a chest is still a chest block but has no container
+	// behind it, so it opens empty and its contents are gone.
+	ListTag<CompoundTag> *blockEntities = (ListTag<CompoundTag> *)tag->getList(L"block_entities");
+	if (blockEntities != NULL)
+	{
+		for (int i = 0; i < blockEntities->size(); i++)
+		{
+			CompoundTag *teTag = blockEntities->get(i);
+			if (teTag == NULL || !teTag->contains(L"id")) continue;
+
+			const wchar_t *legacyId = legacyBlockEntityId(teTag->getString(L"id"));
+			if (legacyId == NULL) continue;
+
+			// TileEntity::loadStatic matches on the legacy id, and the stacks inside are
+			// still in Java's form until convertItemListFromJava runs.
+			teTag->putString(L"id", legacyId);
+			AnvilItemMapping::convertItemListFromJava(teTag, L"Items");
+
+			shared_ptr<TileEntity> te = TileEntity::loadStatic(teTag);
+			if (te != nullptr) chunk->addTileEntity(te);
+		}
+	}
+
 	chunk->loaded = true;
 	return chunk;
 }
@@ -604,6 +675,43 @@ AnvilRegionFile *AnvilChunkStorage::getEntityRegion(int chunkX, int chunkZ, bool
 	return openRegion(m_entityRegions, L"entities", chunkX, chunkZ, createIfMissing);
 }
 
+// Entities live in their own region file, so they are read separately from the chunk and
+// attached afterwards.
+void AnvilChunkStorage::loadEntities(Level *level, LevelChunk *chunk, int x, int z)
+{
+	if (chunk == NULL) return;
+
+	AnvilRegionFile *region = getEntityRegion(x, z, false);
+	if (region == NULL) return;
+
+	byteArray raw = region->readChunk(x, z);
+	if (raw.data == NULL || raw.length == 0) return;
+
+	CompoundTag *tag = NbtIo::decompress(raw);
+	if (tag == NULL) return;
+
+	ListTag<CompoundTag> *entities = (ListTag<CompoundTag> *)tag->getList(L"Entities");
+	if (entities != NULL)
+	{
+		for (int i = 0; i < entities->size(); i++)
+		{
+			CompoundTag *entityTag = entities->get(i);
+			if (entityTag == NULL) continue;
+
+			if (!AnvilEntityMapping::convertEntityFromJava(entityTag)) continue;
+
+			shared_ptr<Entity> entity = EntityIO::loadStatic(entityTag, level);
+			if (entity != nullptr)
+			{
+				chunk->lastSaveHadEntities = true;
+				chunk->addEntity(entity);
+			}
+		}
+	}
+
+	delete tag;
+}
+
 LevelChunk *AnvilChunkStorage::load(Level *level, int x, int z)
 {
 	static int s_logged = 0;
@@ -626,6 +734,8 @@ LevelChunk *AnvilChunkStorage::load(Level *level, int x, int z)
 
 	LevelChunk *chunk = fromChunkTag(level, tag);
 	delete tag;
+
+	if (chunk != NULL) loadEntities(level, chunk, x, z);
 
 	if (trace) AnvilSavePaths::log("[anvil] loaded chunk (%d,%d) bytes=%u chunk=%s\n",
 	                               x, z, raw.length, chunk != NULL ? "ok" : "NULL");

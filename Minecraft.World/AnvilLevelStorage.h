@@ -51,7 +51,7 @@ private:
 public:
 	static const int ANVIL_VERSION_ID = 19133;	// as opposed to McRegion's 19132
 
-	AnvilLevelStorage(ConsoleSaveFile *saveFile, File dir, const wstring &levelName, bool createPlayerDir);
+	AnvilLevelStorage(ConsoleSaveFile *saveFile, File dir, const wstring &levelName, bool createPlayerDir, bool ownsSaveFile = true);
 	~AnvilLevelStorage();
 
 	virtual ChunkStorage *createChunkStorage(Dimension *dimension);
