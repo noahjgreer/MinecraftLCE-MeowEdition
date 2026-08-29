@@ -423,3 +423,7 @@ Minecraft.Client/Saves/*
 Minecraft.Client/Common/Media/platformskin.swf
 Minecraft.Client/Common/Media/platformskinHD.swf
 /References
+
+# Local AI agent files (kept on disk, not tracked)
+CLAUDE.md
+.cc-history/
