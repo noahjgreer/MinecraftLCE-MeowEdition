@@ -71,6 +71,8 @@ run by an agent, so almost every entry should say so explicitly.
 - [2026-08-26 - Client hung on the 4J logo](changes/2026-08-26-client-hang-on-logo.md) - an unguarded Win64DedicatedServer::Tick() silently started a dedicated server 60 frames into every client launch.
 - [2026-08-27 — Settings persist across restarts](changes/2026-08-27-settings-persistence.md) — the x64 profile stub never wrote anything; options now round-trip through `profile.dat`.
 
+- [Anvil (Java Edition) save format](systems/anvil-world-format.md) - how LCE's save system differs from Java 26.1.2, the 147-id block mapping, and the `ConsoleSaveFile` coupling that blocks a full cutover.
+
 ## Ground rules
 
 - **Agents can compile this project — but only the Windows x64 target.** VS2022 is
@@ -87,3 +89,9 @@ run by an agent, so almost every entry should say so explicitly.
 - [2026-08-27 — Native UI, slice 1: the title screen off Flash](changes/2026-08-27-native-ui-titlescreen.md) — the main menu is now a native `TitleScreen` behind `_MEOW_NATIVE_UI`; builds, unrun, and the pad cannot drive it yet.
 - [2026-08-27 — Meow Edition title logo](changes/2026-08-27-title-logo-swap.md) — the logo lives in `MediaWindows64.arc` as symbol `MenuTitle` (`skinHDWin.swf` id 180, 857x207), not in any PNG or loose SWF; three dead ends recorded, including why the 571x138 lookalike is the wrong character.
 - [2026-08-27 — Native UI migration paused; Flash/Iggy is the active UI again](changes/2026-08-27-native-ui-paused.md) — why it was stopped, the one define that turns it back on, and the layout-recovery tooling that outlived it.
+- [2026-08-28 - Anvil save format: foundation](changes/2026-08-28-anvil-save-format-foundation.md) - NBT long arrays, the complete LCE-to-Java block mapping, a spec-compliant region writer and the modern chunk schema; built and unit-tested, not yet wired in.
+- [2026-08-28 - Anvil save format: replacing the save blob](changes/2026-08-28-anvil-replace-the-blob.md) - NativeSaveFile re-implements ConsoleSaveFile over a directory, moving all 51 callers at once; Java-format level.dat and the cutover behind `_MEOW_ANVIL_SAVES`.
+- [2026-08-28 - Anvil: item/entity/player translation and a real saves layout](changes/2026-08-28-anvil-content-and-layout.md) - AnvilSavePaths, item and entity mapping both ways, Java player data; plus three escaped-backslash path bugs, one of which meant no chunk was ever written.
+- [2026-08-28 - Anvil: the saves went to C:\home, and loading a world crashed](changes/2026-08-28-anvil-save-location-and-load-crash.md) - File(parent,child) prepends an Xbox path root; plus the null lighting/data storages that crashed the first chunk loader, and why the world list is empty.
+- [2026-08-28 - Worlds have names again](changes/2026-08-28-anvil-world-identity.md) - every world was created as `Server World` because the typed name only reached the disabled StorageManager; AnvilSavePaths now owns world identity and the load menu lists real folders.
+- [2026-08-28 - Opening an existing world](changes/2026-08-28-anvil-open-existing-world.md) - HostGame() alone starts nothing; the server thread is launched by the FullscreenProgress scene, and the load menu now mirrors the create path.

@@ -87,6 +87,7 @@ typedef arrayWithLength<byte> byteArray;
 typedef arrayWithLength<char> charArray;
 typedef arrayWithLength<short> shortArray;
 typedef arrayWithLength<int> intArray;
+typedef arrayWithLength<__int64> longArray;	// 4J Meow - added for TAG_Long_Array (Anvil palettes)
 typedef arrayWithLength<float> floatArray;
 typedef arrayWithLength<Biome *> BiomeArray;
 typedef arrayWithLength<LevelChunk *> LevelChunkArray;

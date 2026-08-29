@@ -1,4 +1,7 @@
 #include "stdafx.h"
+#ifdef _MEOW_ANVIL_SAVES
+#include "..\..\Minecraft.World\AnvilSavePaths.h"
+#endif
 #include "UI.h"
 #include "UIScene_CreateWorldMenu.h"
 #include "..\..\MinecraftServer.h"
@@ -1088,6 +1091,14 @@ void UIScene_CreateWorldMenu::CreateGame(UIScene_CreateWorldMenu* pClass, DWORD 
 	StorageManager.ResetSaveData();
 	// Make our next save default to the name of the level
 	StorageManager.SetSaveTitle((wchar_t *)wWorldName.c_str());
+
+#ifdef _MEOW_ANVIL_SAVES
+	// 4J Meow - SetSaveTitle above is the console route for this, and StorageManager is
+	// disabled on Windows x64, so the entered name never reached the server: every world
+	// opened "Server World" from server.properties and loaded the previous one's data.
+	// Claim a directory for it here instead, sanitised and made unique.
+	AnvilSavePaths::setCurrentWorld(AnvilSavePaths::makeUniqueWorldName(wWorldName));
+#endif
 
 	wstring wSeed;
 	if(!pClass->m_MoreOptionsParams.seed.empty() )

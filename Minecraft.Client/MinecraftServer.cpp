@@ -19,6 +19,11 @@
 #include "..\Minecraft.World\net.minecraft.network.h"
 #include "..\Minecraft.World\net.minecraft.world.level.dimension.h"
 #include "..\Minecraft.World\net.minecraft.world.level.storage.h"
+#ifdef _MEOW_ANVIL_SAVES
+#include "..\Minecraft.World\AnvilLevelStorage.h"
+#include "..\Minecraft.World\NativeSaveFile.h"
+#include "..\Minecraft.World\AnvilSavePaths.h"
+#endif
 #include "..\Minecraft.World\net.minecraft.world.h"
 #include "..\Minecraft.World\net.minecraft.world.level.h"
 #include "..\Minecraft.World\net.minecraft.world.level.tile.h"
@@ -207,6 +212,18 @@ bool MinecraftServer::initServer(__int64 seed, NetworkGameInitData *initData, DW
         __int64 levelNanoTime = System::nanoTime();
 
         wstring levelName = settings->getString(L"level-name", L"world");
+
+#ifdef _MEOW_ANVIL_SAVES
+		// 4J Meow - The client picks its world in the create/load screens, which on
+		// console would have told C4JStorage which save slot to use. That layer is
+		// disabled on Windows, so the choice comes through AnvilSavePaths instead.
+		// Empty means nothing chose one - the dedicated server case - and
+		// server.properties still decides.
+		if (!AnvilSavePaths::getCurrentWorld().empty())
+		{
+			levelName = AnvilSavePaths::getCurrentWorld();
+		}
+#endif
 		app.DebugPrintf("Server: level name is \"%ls\"\n", levelName.c_str());
 		wstring levelTypeString;
 
@@ -416,8 +433,22 @@ bool MinecraftServer::loadLevel(LevelStorageSource *storageSource, const wstring
 #endif
 
 	// 4J - temp - load existing level
-	shared_ptr<McRegionLevelStorage> storage = nullptr;
+	shared_ptr<LevelStorage> storage = nullptr;
 	bool levelChunksNeedConverted = false;
+
+#ifdef _MEOW_ANVIL_SAVES
+	// 4J Meow - The world is a Java-shaped directory rather than a single blob:
+	// NativeSaveFile re-implements ConsoleSaveFile over <world name>/ so every existing
+	// caller keeps working, and AnvilLevelStorage writes level.dat and region/*.mca in
+	// Java Edition's format. See docs/systems/anvil-world-format.md.
+	//
+	// The incoming initData->saveData blob is deliberately ignored here - it only ever
+	// carries a console-format save, which this path does not read.
+	AnvilSavePaths::log("[anvil] loadLevel reached, level name %ls\n", name.c_str());
+
+	storage = shared_ptr<LevelStorage>(
+		new AnvilLevelStorage( new NativeSaveFile( AnvilSavePaths::worldDirectory( name ) ), File(L"."), name, true ));
+#else
 	if( initData->saveData != NULL )
 	{
 		// We are loading a file from disk with the data passed in
@@ -464,6 +495,7 @@ bool MinecraftServer::loadLevel(LevelStorageSource *storageSource, const wstring
 		storage = shared_ptr<McRegionLevelStorage>(new McRegionLevelStorage(new ConsoleSaveFileOriginal( L"" ), File(L"."), name, true));
 #endif
 	}
+#endif // _MEOW_ANVIL_SAVES
 
 //	McRegionLevelStorage *storage = new McRegionLevelStorage(new ConsoleSaveFile( L"" ), L"", L"", 0); // original
 //    McRegionLevelStorage *storage = new McRegionLevelStorage(File(L"."), name, true); // TODO 

@@ -24,12 +24,12 @@ namespace Win64SaveFile
 
 	std::wstring GetSavePath()
 	{
-		return s_worldName + L"\savegame.dat";
+		return s_worldName + L"\\savegame.dat";
 	}
 
 	static std::wstring GetTempPath_()
 	{
-		return s_worldName + L"\savegame.dat.tmp";
+		return s_worldName + L"\\savegame.dat.tmp";
 	}
 
 	unsigned int GetSize()

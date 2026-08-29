@@ -10,6 +10,7 @@
 #include "StringTag.h"
 #include "ByteArrayTag.h"
 #include "IntArrayTag.h"
+#include "LongArrayTag.h"
 
 class CompoundTag : public Tag    
 {
@@ -105,6 +106,12 @@ public:
         tags[name] = (new ByteArrayTag(name,value));
     }
 
+	// 4J Meow - Anvil palette storage
+	void putLongArray(wchar_t * name, longArray value)
+	{
+		tags[name] = (new LongArrayTag(name, value));
+	}
+
 	void putIntArray(wchar_t * name, intArray value)
 	{
 		tags[name] = (new IntArrayTag(name, value));
@@ -184,6 +191,12 @@ public:
 	{
 		if (tags.find(name) == tags.end()) return intArray(0);
 		return ((IntArrayTag *) tags[name])->data;
+	}
+
+	longArray getLongArray(wchar_t * name)
+	{
+		if (tags.find(name) == tags.end()) return longArray(0);
+		return ((LongArrayTag *) tags[name])->data;
 	}
 
     CompoundTag *getCompound(wchar_t * name)

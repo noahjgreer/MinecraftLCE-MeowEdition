@@ -9,6 +9,7 @@
 #include "LongTag.h"
 #include "ShortTag.h"
 #include "StringTag.h"
+#include "LongArrayTag.h"
 #include "ListTag.h"
 #include "CompoundTag.h"
 
@@ -138,6 +139,8 @@ Tag *Tag::newTag(byte type, const wstring &name)
 		return new ByteArrayTag(name);
 	case TAG_Int_Array:
 		return new IntArrayTag(name);
+	case TAG_Long_Array:
+		return new LongArrayTag(name);
 	case TAG_String:
 		return new StringTag(name);
 	case TAG_List:
@@ -170,6 +173,8 @@ wchar_t *Tag::getTagName(byte type)
 		return L"TAG_Byte_Array";
 	case TAG_Int_Array:
 		return L"TAG_Int_Array";
+	case TAG_Long_Array:
+		return L"TAG_Long_Array";
 	case TAG_String:
 		return L"TAG_String";
 	case TAG_List:

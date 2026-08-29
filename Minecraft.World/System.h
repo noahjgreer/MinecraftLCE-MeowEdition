@@ -19,6 +19,7 @@ public:
 	ArrayCopyFunctionDeclaration(Node *)
 	ArrayCopyFunctionDeclaration(Biome *)
 	ArrayCopyFunctionDeclaration(int)
+	ArrayCopyFunctionDeclaration(__int64)	// 4J Meow - TAG_Long_Array
 
 	static __int64 nanoTime();
 	static __int64 currentTimeMillis();

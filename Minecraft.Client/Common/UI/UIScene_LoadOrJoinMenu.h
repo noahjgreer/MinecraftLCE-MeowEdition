@@ -80,6 +80,12 @@ private:
 	vector<FriendSessionInfo *> *m_currentSessions;
 	vector<LevelGenerationOptions *> m_generators;
 	vector<File *> *m_saves;
+#ifdef _MEOW_ANVIL_SAVES
+	// 4J Meow - directory names of the worlds shown in the saves list, in list order.
+	vector<wstring> m_anvilWorlds;
+
+	void OpenAnvilWorld(const wstring &worldName);
+#endif
 	
 	bool m_bIgnoreInput;
 	bool m_bAllLoaded;

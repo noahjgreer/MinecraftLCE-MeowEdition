@@ -19,6 +19,7 @@ public:
     static const byte TAG_List = 9;
     static const byte TAG_Compound = 10;
 	static const byte TAG_Int_Array = 11;
+	static const byte TAG_Long_Array = 12;	// 4J Meow - Anvil palettes
 
 private:
     wstring name;

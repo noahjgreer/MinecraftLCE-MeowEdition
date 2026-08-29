@@ -5,6 +5,10 @@
 #include <typeinfo>			// 4J Meow - screen names in the diagnostic log
 #endif
 #include "Minecraft.h"
+#ifdef _MEOW_ANVIL_SAVES
+#include "..\Minecraft.World\AnvilLevelStorageSource.h"
+#include "..\Minecraft.World\AnvilSavePaths.h"
+#endif
 #include "GameMode.h"
 #include "Timer.h"
 #include "ProgressRenderer.h"
@@ -323,7 +327,20 @@ void Minecraft::init()
 	// glClearColor(0.2f, 0.2f, 0.2f, 1);
 
 	workingDirectory = getWorkingDirectory();
+#ifdef _MEOW_ANVIL_SAVES
+	// 4J Meow - worlds are Java-format directories now; see docs/systems/anvil-world-format.md.
+	// The saves root is deliberately left to AnvilSavePaths, which resolves it to a
+	// "saves" folder beside Minecraft.Client.exe.
+	//
+	// It must NOT come from getWorkingDirectory(). File(parent, child) builds
+	// pathRoot + "\\" + parent + ... (File.cpp), an Xbox convention where pathRoot is
+	// "GAME:". On Windows pathRoot is empty, so that leading separator makes the result
+	// an absolute path from the root of the current drive - getWorkingDirectory() yields
+	// "\home\minecraft", and worlds ended up in C:\home\minecraft\saves.
+	levelSource = new AnvilLevelStorageSource(File(AnvilSavePaths::getSavesRoot()));
+#else
 	levelSource = new McRegionLevelStorageSource(File(workingDirectory, L"saves"));
+#endif
 	//        levelSource = new MemoryLevelStorageSource();
 	options = new Options(this, workingDirectory);
 	skins = new TexturePackRepository(workingDirectory, this);

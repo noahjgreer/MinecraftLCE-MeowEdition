@@ -13,6 +13,7 @@ template <class T> void System::arraycopy(arrayWithLength<T> src, unsigned int s
 	std::copy( src.data + srcPos, src.data + srcPos + length, dst->data + dstPos );
 }
 
+ArrayCopyFunctionDefinition(__int64)	// 4J Meow - TAG_Long_Array
 ArrayCopyFunctionDefinition(Node *)
 ArrayCopyFunctionDefinition(Biome *)
 

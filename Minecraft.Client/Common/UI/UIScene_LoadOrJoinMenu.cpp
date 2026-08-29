@@ -1,4 +1,10 @@
 #include "stdafx.h"
+#ifdef _MEOW_ANVIL_SAVES
+#include "..\..\Minecraft.World\AnvilSavePaths.h"
+#include "..\..\Minecraft.World\AnvilLevelStorageSource.h"
+#include "..\..\Minecraft.World\LevelData.h"
+#include "..\..\Options.h"
+#endif
 #include "UI.h"
 #include "UIScene_LoadOrJoinMenu.h"
 
@@ -818,6 +824,28 @@ void UIScene_LoadOrJoinMenu::GetSaveInfo()
 
     // This will return with the number retrieved in uiSaveC
 
+#ifdef _MEOW_ANVIL_SAVES
+    // 4J Meow - The list below this normally comes from C4JStorage (StorageManager),
+    // whose Init() is inside an #if 0 on Windows x64 (Windows64_Minecraft.cpp), so it
+    // always returned nothing and no saved world ever appeared. Worlds are ordinary
+    // directories now, so enumerate them directly.
+    {
+        m_anvilWorlds = AnvilSavePaths::listWorlds();
+
+        AddDefaultButtons();
+
+        for(unsigned int i = 0; i < m_anvilWorlds.size(); i++)
+        {
+            m_buttonListSaves.addItem(m_anvilWorlds[i].c_str(), L"");
+        }
+
+        m_bSavesDisplayed = true;
+        m_bAllLoaded = true;
+        m_bIgnoreInput = false;
+        return;
+    }
+#endif
+
     if(app.DebugSettingsOn() && app.GetLoadSavesFromFolderEnabled())
     {
 #ifdef __ORBIS__
@@ -1232,6 +1260,91 @@ void UIScene_LoadOrJoinMenu::remoteStorageGetSaveCallback(LPVOID lpParam, SonyRe
 }
 #endif
 
+#ifdef _MEOW_ANVIL_SAVES
+// 4J Meow - Start an existing Anvil world.
+//
+// The console route for this is UIScene_LoadMenu, which is built entirely around
+// C4JStorage: it pulls a thumbnail and then the save *blob* through
+// StorageManager.LoadSaveData() before hosting. None of that exists on Windows x64, and
+// a directory-based world has no blob to load, so this mirrors
+// UIScene_CreateWorldMenu::CreateGame instead - minus the world creation.
+//
+// Note HostGame() alone does not start anything: the server thread is launched by the
+// FullscreenProgress scene running RunNetworkGameThreadProc with the init data. An
+// earlier version of this called only HostGame and silently did nothing.
+void UIScene_LoadOrJoinMenu::OpenAnvilWorld(const wstring &worldName)
+{
+    AnvilSavePaths::setCurrentWorld(worldName);
+
+    NetworkGameInitData *param = new NetworkGameInitData();
+    param->saveData = NULL;
+    param->findSeed = false;
+
+    // Seed, world size and game type all come from the world's own level.dat once
+    // Level::Level() sees prepareLevel() return non-NULL, so what is passed here only
+    // matters for a world that turns out not to exist.
+    param->seed = 0;
+    param->texturePackId = 0;
+    param->xzSize = LEVEL_MAX_WIDTH;
+    param->hellScale = HELL_LEVEL_MAX_SCALE;
+
+    // The game type is the exception: MinecraftServer::initServer reads it from the host
+    // options, so take it from the saved world or the world opens in the wrong mode.
+    AnvilLevelStorageSource *source =
+        dynamic_cast<AnvilLevelStorageSource *>(Minecraft::GetInstance()->getLevelSource());
+
+    if(source != NULL)
+    {
+        LevelData *levelData = source->loadLevelDataFor(worldName);
+        if(levelData != NULL)
+        {
+            if(levelData->getGameType() != NULL)
+            {
+                app.SetGameHostOption(eGameHostOption_GameType, levelData->getGameType()->getId());
+            }
+            delete levelData;
+        }
+    }
+
+    app.SetGameHostOption(eGameHostOption_Difficulty, Minecraft::GetInstance()->options->difficulty);
+
+    const int primaryPad = ProfileManager.GetPrimaryPad();
+    const bool isLocalMultiplayerAvailable = app.IsLocalMultiplayerAvailable();
+
+    DWORD dwLocalUsersMask = 0;
+    for(unsigned int i = 0; i < XUSER_MAX_COUNT; ++i)
+    {
+        if(ProfileManager.IsSignedIn(i) && ((int)i == primaryPad || isLocalMultiplayerAvailable))
+        {
+            dwLocalUsersMask |= CGameNetworkManager::GetLocalPlayerMask(i);
+        }
+    }
+
+    g_NetworkManager.HostGame(dwLocalUsersMask, false, false, MINECRAFT_NET_MAX_PLAYERS, 0);
+
+    param->settings = app.GetGameHostOption(eGameHostOption_All);
+
+#ifndef _XBOX
+    g_NetworkManager.FakeLocalPlayerJoined();
+#endif
+
+    LoadingInputParams *loadingParams = new LoadingInputParams();
+    loadingParams->func = &CGameNetworkManager::RunNetworkGameThreadProc;
+    loadingParams->lpParam = (LPVOID)param;
+
+    app.SetAutosaveTimerTime();
+
+    UIFullscreenProgressCompletionData *completionData = new UIFullscreenProgressCompletionData();
+    completionData->bShowBackground = TRUE;
+    completionData->bShowLogo = TRUE;
+    completionData->type = e_ProgressCompletion_CloseAllPlayersUIScenes;
+    completionData->iPad = DEFAULT_XUI_MENU_USER;
+    loadingParams->completionData = completionData;
+
+    ui.NavigateToScene(m_iPad, eUIScene_FullscreenProgress, loadingParams);
+}
+#endif // _MEOW_ANVIL_SAVES
+
 void UIScene_LoadOrJoinMenu::handlePress(F64 controlId, F64 childId)
 {
     switch((int)controlId)
@@ -1301,6 +1414,22 @@ void UIScene_LoadOrJoinMenu::handlePress(F64 controlId, F64 childId)
                 {		
                     app.SetTutorialMode( false );
 
+#ifdef _MEOW_ANVIL_SAVES
+                    // 4J Meow - the list is the real saves folder, so the choice is just
+                    // the world's directory name.
+                    {
+                        const int index = (int)childId - m_iDefaultButtonsC;
+
+                        if(index >= 0 && index < (int)m_anvilWorlds.size())
+                        {
+                            OpenAnvilWorld(m_anvilWorlds[index]);
+                        }
+                        else
+                        {
+                            m_bIgnoreInput = false;
+                        }
+                    }
+#else
                     if(app.DebugSettingsOn() && app.GetLoadSavesFromFolderEnabled())
                     {
                         LoadSaveFromDisk(m_saves->at((int)childId-m_iDefaultButtonsC));
@@ -1333,6 +1462,7 @@ void UIScene_LoadOrJoinMenu::handlePress(F64 controlId, F64 childId)
                             ui.NavigateToScene(ProfileManager.GetPrimaryPad(),eUIScene_LoadMenu, params);
                         }
                     }
+#endif // _MEOW_ANVIL_SAVES
                 }
             }
         }
